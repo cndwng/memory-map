@@ -194,7 +194,9 @@
 
     const inFocus = document.body.classList.contains('focus-mode');
     const downloadBtn = isSynthetic(path) ? '' :
-      '<button class="action-btn download-btn" title="Download .md">↓ Download</button>';
+      '<button class="action-btn inline-action download-btn" title="Download .md">↓ Download</button>';
+    const popoutBtn = isSynthetic(path) ? '' :
+      '<button class="action-btn popout-btn" title="Open in a new window">⇗ Pop out</button>';
     const focusBtn =
       '<button class="action-btn focus-btn">' + (inFocus ? '⤡ Exit focus' : '⤢ Focus') + '</button>';
 
@@ -202,9 +204,9 @@
       '<div class="detail-header">' +
         '<div class="crumb-row">' +
           '<span class="crumb">' + crumbDisplay + '</span>' +
-          '<div class="actions">' + downloadBtn + focusBtn + '</div>' +
+          '<div class="actions">' + popoutBtn + focusBtn + '</div>' +
         '</div>' +
-        '<h2>' + esc(name) + '</h2>' +
+        '<h2 class="title-row"><span class="title-name">' + esc(name) + '</span>' + downloadBtn + '</h2>' +
         descHtml + triggersHtml + toolsHtml + dateHtml +
       '</div>' +
       '<div class="markdown">' + html + '</div>';
@@ -228,6 +230,10 @@
     if (focusBtnEl) focusBtnEl.addEventListener('click', () => {
       const next = !document.body.classList.contains('focus-mode');
       setFocus(next);
+    });
+    const popoutBtnEl = detail.querySelector('.popout-btn');
+    if (popoutBtnEl) popoutBtnEl.addEventListener('click', () => {
+      openInPopup(path);
     });
 
     // intercept relative .md links — resolve and open in our view
@@ -255,12 +261,18 @@
   }
 
   // ---------- leaf clicks ----------
+  // Detect the Swift WKWebView host. When present, popups go through the
+  // native bridge so the Dock identity stays consistent. Outside of it (eg
+  // testing in Chrome directly), fall back to the Chrome-spawning endpoint.
+  const inNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openPopup);
+
   function openInPopup(path) {
-    // Ask the server to spawn a fresh Chrome --app window so the popup has no
-    // address bar. (window.open() inside an --app window still shows browser
-    // chrome on the child window.)
-    fetch('/api/popup?path=' + encodeURIComponent(path), { method: 'POST' })
-      .catch(err => console.warn('popup failed:', err));
+    if (inNative) {
+      window.webkit.messageHandlers.openPopup.postMessage({ path: path });
+    } else {
+      fetch('/api/popup?path=' + encodeURIComponent(path), { method: 'POST' })
+        .catch(err => console.warn('popup failed:', err));
+    }
   }
 
   document.querySelectorAll('.row.leaf').forEach(r => {

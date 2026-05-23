@@ -120,6 +120,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        # Serve the favicon from the bundle so Chrome --app picks it up for
+        # the Dock tile and window-title icon.
+        if self.path in ('/favicon.png', '/favicon.ico'):
+            try:
+                with open(os.path.join(RES_DIR, 'favicon.png'), 'rb') as f:
+                    body = f.read()
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/png')
+                self.send_header('Content-Length', str(len(body)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception:
+                self.send_response(404)
+                self.end_headers()
+            return
         if self.path == '/' or self.path.startswith('/?') or self.path == '/index.html':
             # Pull focus flag from query string so the page renders pre-focused
             # (no animation flash on popup launch).

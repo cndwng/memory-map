@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key>
-  <string>run</string>
+  <string>MemoryMap</string>
   <key>CFBundleIdentifier</key>
   <string>com.cindyqwang.memorymap</string>
   <key>CFBundleName</key>
@@ -22,5 +22,12 @@
   <string>11.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
 </dict>
 </plist>

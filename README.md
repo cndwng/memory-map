@@ -30,7 +30,7 @@ python3 MemoryMap.app/Contents/Resources/build.py
 open MemoryMap.app
 ```
 
-The app launches a localhost-only HTTP server in the background and opens Chrome in `--app` mode pointed at it. No menu bar, no URL bar — just the map.
+The app is a small native Cocoa wrapper (`Contents/MacOS/MemoryMap`, ~110 KB Swift binary) that starts the localhost HTTP server in the background and opens a WKWebView window on it. One Dock tile, custom icon, single-window behavior. The Swift source is in `Contents/Resources/MemoryMap.swift` if you want to rebuild (`swiftc -O MemoryMap.swift -o ../MacOS/MemoryMap`).
 
 ## Refresh
 
