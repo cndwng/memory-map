@@ -75,6 +75,22 @@ The committed `data/memory-map.json` in the repo reflects whichever machine gene
 
 Routines (remote scheduled agents via `/schedule`) live on Anthropic's servers, not on your Mac, so `build.py` can't fetch them directly. They're cached in `data/routines.json`. To refresh, ask Claude Code to run `RemoteTrigger list` and update the file.
 
+## Per-machine config
+
+`data/config.local.json` (gitignored, optional) lets you override two things:
+
+```json
+{
+  "workspace_dirs": ["~/dev"],
+  "data_file": "/absolute/path/to/someone-elses-memory-map.json"
+}
+```
+
+- `workspace_dirs` — replaces the auto-detected workspace path. If absent, the build script tries `~/workspace`, `~/dev`, `~/code`, `~/Projects`, etc., in order and uses the first existing one.
+- `data_file` — points the viewer at a different JSON than `data/memory-map.json`. Useful for viewing someone else's exported map (drop their JSON anywhere and select it).
+
+Easier than editing the file: open the app, click the ⚙ gear, then **"📂 Choose workspace folder…"** or **"📄 Use external data file…"** to open a native picker. **"↺ Reset to defaults"** clears overrides.
+
 ## Requirements
 
 - macOS with Python 3 (standard on modern macOS)

@@ -36,7 +36,36 @@ RES_DIR, REPO = discover_paths()
 # build.py lives next to this server (both inside Resources/) so the bundle is
 # self-contained.
 BUILD_SCRIPT = os.path.join(RES_DIR, 'build.py')
-DATA_FILE = os.path.join(REPO, 'data', 'memory-map.json')
+DEFAULT_DATA_FILE = os.path.join(REPO, 'data', 'memory-map.json')
+CONFIG_FILE = os.path.join(REPO, 'data', 'config.local.json')
+
+
+def load_config():
+    """Read data/config.local.json. Returns a dict; empty if missing/bad."""
+    if not os.path.isfile(CONFIG_FILE):
+        return {}
+    try:
+        return json.load(open(CONFIG_FILE))
+    except Exception:
+        return {}
+
+
+def save_config(cfg):
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(cfg, f, indent=2)
+
+
+def active_data_file():
+    """Return the path to the JSON the viewer should read. Honors config.data_file
+    when set and valid; otherwise falls back to the default sibling data file."""
+    cfg = load_config()
+    override = cfg.get('data_file')
+    if override:
+        override = os.path.expanduser(override)
+        if os.path.isfile(override):
+            return override
+    return DEFAULT_DATA_FILE
 
 
 def synthesize_html(focus=False):
@@ -55,8 +84,9 @@ def synthesize_html(focus=False):
     marked_js = read('marked.min.js')
 
     data = '{}'
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
+    data_path = active_data_file()
+    if os.path.exists(data_path):
+        with open(data_path, 'r', encoding='utf-8') as f:
             data = f.read()
 
     # Escape </ so user content can't accidentally close the <script> tag.
@@ -80,6 +110,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # Quiet logs (set MEMORYMAP_VERBOSE=1 to enable)
         if os.environ.get('MEMORYMAP_VERBOSE'):
             sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+
+    def _json(self, payload, status=200):
+        body = json.dumps(payload).encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_GET(self):
         if self.path == '/' or self.path.startswith('/?') or self.path == '/index.html':
@@ -108,6 +146,77 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
+        if self.path == '/api/pick-data-file':
+            # Show a native macOS file picker for .json files. On pick, write
+            # the chosen path into config.data_file. Front-end reloads to apply.
+            try:
+                proc = subprocess.run(
+                    ['osascript', '-e',
+                     'POSIX path of (choose file with prompt "Select a Memory Map JSON file" of type {"json", "public.json"})'],
+                    capture_output=True, text=True, timeout=120,
+                )
+                if proc.returncode != 0:
+                    # User cancelled — not an error.
+                    self._json({'ok': False, 'cancelled': True})
+                    return
+                picked = proc.stdout.strip()
+                if not picked or not os.path.isfile(picked):
+                    self._json({'ok': False, 'stderr': 'not a file'}, status=400)
+                    return
+                cfg = load_config()
+                cfg['data_file'] = picked
+                save_config(cfg)
+                self._json({'ok': True, 'data_file': picked})
+            except Exception as e:
+                self._json({'ok': False, 'stderr': f'{type(e).__name__}: {e}'}, status=500)
+            return
+
+        if self.path == '/api/pick-workspace':
+            # Native folder picker. On pick, write to config.workspace_dirs and
+            # kick a rebuild so the workspace tab reflects the new dir.
+            try:
+                proc = subprocess.run(
+                    ['osascript', '-e',
+                     'POSIX path of (choose folder with prompt "Select your workspace folder (contains your code repos)")'],
+                    capture_output=True, text=True, timeout=120,
+                )
+                if proc.returncode != 0:
+                    self._json({'ok': False, 'cancelled': True})
+                    return
+                picked = proc.stdout.strip()
+                if not picked or not os.path.isdir(picked):
+                    self._json({'ok': False, 'stderr': 'not a dir'}, status=400)
+                    return
+                cfg = load_config()
+                cfg['workspace_dirs'] = [picked.rstrip('/')]
+                save_config(cfg)
+                # Rebuild so the new dir's repos appear.
+                build = subprocess.run(
+                    ['python3', BUILD_SCRIPT],
+                    capture_output=True, text=True, timeout=60,
+                )
+                self._json({
+                    'ok': build.returncode == 0,
+                    'workspace_dir': picked,
+                    'stderr': build.stderr,
+                })
+            except Exception as e:
+                self._json({'ok': False, 'stderr': f'{type(e).__name__}: {e}'}, status=500)
+            return
+
+        if self.path == '/api/reset-config':
+            try:
+                if os.path.isfile(CONFIG_FILE):
+                    os.unlink(CONFIG_FILE)
+                # Rebuild with defaults.
+                build = subprocess.run(
+                    ['python3', BUILD_SCRIPT], capture_output=True, text=True, timeout=60,
+                )
+                self._json({'ok': build.returncode == 0, 'stderr': build.stderr})
+            except Exception as e:
+                self._json({'ok': False, 'stderr': f'{type(e).__name__}: {e}'}, status=500)
+            return
+
         if self.path.startswith('/api/popup'):
             # Spawn a new Chrome --app window pointing at this server with the
             # given path & focus mode pre-set. Avoids window.open() showing

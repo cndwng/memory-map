@@ -25,7 +25,38 @@ REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SELF_DIR)))
 OUT_DIR = os.path.join(REPO_DIR, 'data')
 OUT_FILE = os.path.join(OUT_DIR, 'memory-map.json')
 ROUTINES_FILE = os.path.join(OUT_DIR, 'routines.json')
-WORKSPACE_DIR = os.path.join(HOME, 'workspace')   # may not exist on other machines
+CONFIG_FILE = os.path.join(OUT_DIR, 'config.local.json')
+
+# Per-machine config. Optional.
+#   workspace_dirs: list of dirs to scan for */.claude/ — defaults to
+#                   auto-detection (~/workspace, ~/dev, ~/code, ...).
+#   data_file:      override for which JSON the *viewer* reads (server-only).
+def load_config():
+    if not os.path.isfile(CONFIG_FILE):
+        return {}
+    try:
+        return json.load(open(CONFIG_FILE))
+    except Exception:
+        return {}
+
+
+def expand(p):
+    return os.path.expanduser(p) if isinstance(p, str) else p
+
+
+_cfg = load_config()
+_explicit_ws = [expand(p) for p in (_cfg.get('workspace_dirs') or []) if p]
+if _explicit_ws:
+    WORKSPACE_DIRS = [p for p in _explicit_ws if os.path.isdir(p)]
+else:
+    # Auto-detect: first existing common dev-dir name.
+    _candidates = ['workspace', 'dev', 'code', 'Projects', 'projects', 'repos', 'src']
+    WORKSPACE_DIRS = []
+    for _name in _candidates:
+        _path = os.path.join(HOME, _name)
+        if os.path.isdir(_path):
+            WORKSPACE_DIRS.append(_path)
+            break
 
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -171,12 +202,14 @@ inventory = {
 }
 inventory['global'] = collect_claude_dir(f'{HOME}/.claude')
 
-# Workspace: skip silently if directory doesn't exist
-if os.path.isdir(WORKSPACE_DIR):
-    for ws_dir in sorted(glob.glob(f'{WORKSPACE_DIR}/*/')):
+# Workspace: scan each configured/detected dir; skip silently if none exist.
+for ws_root in WORKSPACE_DIRS:
+    for ws_dir in sorted(glob.glob(f'{ws_root}/*/')):
         repo = os.path.basename(ws_dir.rstrip('/'))
         items = collect_claude_dir(f'{ws_dir}.claude')
         if any(items.values()):
+            # If multiple workspace roots have a repo of the same name, the last
+            # one wins. Not common enough to fuss about.
             inventory['workspace'][repo] = items
 
 # Memory
@@ -512,7 +545,12 @@ def build_global_tree(inv):
 
 
 def build_workspace_tree(inv):
-    out = ['<div class="row root"><span class="folder root-name">~/workspace/</span></div>']
+    # Show the actual workspace dir(s) being scanned, not a hardcoded ~/workspace.
+    if WORKSPACE_DIRS:
+        labels = ', '.join(d.replace(HOME, '~') for d in WORKSPACE_DIRS)
+    else:
+        labels = '(none — set workspace_dirs in data/config.local.json)'
+    out = [f'<div class="row root"><span class="folder root-name">{esc(labels)}/</span></div>']
     repos = list(inv['workspace'].items())
     if not repos:
         out.append('<div class="row" style="color:var(--muted);padding-left:20px;font-style:italic;">No workspace repos with .claude/ found.</div>')

@@ -1,16 +1,70 @@
 #!/usr/bin/env bash
 # Memory Map launcher.
-# Starts a localhost server in the background and opens Chrome in --app mode
-# pointed at it.
+# - If the server + a Chrome Memory Map window are already running, focus the
+#   existing window and exit.
+# - If the server is running but no window is around, just open a new Chrome
+#   window pointed at the existing server.
+# - Otherwise start a fresh server and open Chrome.
 
 set -e
 
 BUNDLE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 RES_DIR="$BUNDLE_DIR/Resources"
 REPO_DIR="$(cd "$BUNDLE_DIR/.." && pwd)"
-
-# Kill any prior server instance.
 PID_FILE="/tmp/memorymap.pid"
+PORT_CACHE="/tmp/memorymap.port"
+LOG="$HOME/Library/Application Support/MemoryMap/server.log"
+USER_DATA="$HOME/Library/Application Support/MemoryMap/chrome-profile"
+mkdir -p "$(dirname "$LOG")"
+mkdir -p "$USER_DATA"
+
+CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+# Try to focus an existing Memory Map Chrome window via AppleScript.
+# Returns 0 if a window was found and focused, 1 otherwise.
+focus_existing_window() {
+  osascript <<'EOF' 2>/dev/null
+    tell application "Google Chrome"
+      set found to false
+      repeat with w in windows
+        try
+          if title of w contains "Memory Map" then
+            set index of w to 1
+            set found to true
+            exit repeat
+          end if
+        end try
+      end repeat
+      if found then activate
+      return found
+    end tell
+EOF
+}
+
+server_alive() {
+  [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null
+}
+
+# --- fast path: server alive ---
+if server_alive; then
+  # Try to focus an existing window.
+  if [ "$(focus_existing_window)" = "true" ]; then
+    exit 0
+  fi
+  # Server is alive but no window found — open a new Chrome window at it.
+  PORT="$(cat "$PORT_CACHE" 2>/dev/null || true)"
+  if [ -n "$PORT" ]; then
+    exec "$CHROME" \
+      --app="http://127.0.0.1:$PORT/" \
+      --user-data-dir="$USER_DATA" \
+      --no-first-run \
+      --no-default-browser-check
+  fi
+  # Port cache missing — fall through to full restart.
+fi
+
+# --- slow path: start fresh ---
+# Clean up any stale PID file.
 if [ -f "$PID_FILE" ]; then
   OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
   if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
@@ -20,16 +74,10 @@ if [ -f "$PID_FILE" ]; then
   rm -f "$PID_FILE"
 fi
 
-# Start the server in background. It prints its port as the first stdout line.
-LOG="$HOME/Library/Application Support/MemoryMap/server.log"
-mkdir -p "$(dirname "$LOG")"
-
-# Use a temp fifo / tail approach to capture the port without blocking.
+# Start the server; it prints its port on the first stdout line.
 PORT_FILE="$(mktemp)"
 ( python3 "$RES_DIR/server.py" > "$PORT_FILE" 2>"$LOG" ) &
-SERVER_PID=$!
 
-# Wait briefly for the port line to appear.
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
   PORT="$(head -n1 "$PORT_FILE" 2>/dev/null || true)"
   if [ -n "$PORT" ]; then break; fi
@@ -42,12 +90,10 @@ if [ -z "$PORT" ]; then
   exit 1
 fi
 rm -f "$PORT_FILE"
+# Cache port so subsequent dock-icon taps can find the running server.
+echo "$PORT" > "$PORT_CACHE"
 
-# Isolated Chrome profile so window state / localStorage are independent.
-USER_DATA="$HOME/Library/Application Support/MemoryMap/chrome-profile"
-mkdir -p "$USER_DATA"
-
-exec /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+exec "$CHROME" \
   --app="http://127.0.0.1:$PORT/" \
   --user-data-dir="$USER_DATA" \
   --no-first-run \

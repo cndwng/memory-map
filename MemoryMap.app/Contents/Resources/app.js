@@ -334,24 +334,37 @@
     setTimeout(() => el.remove(), isError ? 8000 : 3000);
   }
 
-  const regenBtn = document.getElementById('regen-btn');
-  if (regenBtn) {
-    regenBtn.addEventListener('click', async () => {
-      settingsMenu.classList.remove('open');
-      gearBtn.setAttribute('aria-busy', 'true');
-      try {
-        const res = await fetch('/api/rebuild', { method: 'POST' });
-        const body = await res.json();
-        if (body.ok) {
-          location.reload();
-        } else {
-          gearBtn.removeAttribute('aria-busy');
-          toast('Rebuild failed: ' + (body.stderr || 'unknown error').slice(0, 400), true);
-        }
-      } catch (err) {
+  async function runMenuAction(endpoint, label) {
+    settingsMenu.classList.remove('open');
+    gearBtn.setAttribute('aria-busy', 'true');
+    try {
+      const res = await fetch(endpoint, { method: 'POST' });
+      const body = await res.json();
+      if (body.cancelled) {
         gearBtn.removeAttribute('aria-busy');
-        toast('Rebuild request failed: ' + err.message, true);
+        return;
       }
-    });
+      if (body.ok) {
+        location.reload();
+      } else {
+        gearBtn.removeAttribute('aria-busy');
+        toast(label + ' failed: ' + (body.stderr || 'unknown error').slice(0, 400), true);
+      }
+    } catch (err) {
+      gearBtn.removeAttribute('aria-busy');
+      toast(label + ' request failed: ' + err.message, true);
+    }
   }
+
+  const regenBtn = document.getElementById('regen-btn');
+  if (regenBtn) regenBtn.addEventListener('click', () => runMenuAction('/api/rebuild', 'Rebuild'));
+
+  const pickWorkspaceBtn = document.getElementById('pick-workspace-btn');
+  if (pickWorkspaceBtn) pickWorkspaceBtn.addEventListener('click', () => runMenuAction('/api/pick-workspace', 'Pick workspace'));
+
+  const pickDataBtn = document.getElementById('pick-data-btn');
+  if (pickDataBtn) pickDataBtn.addEventListener('click', () => runMenuAction('/api/pick-data-file', 'Pick data file'));
+
+  const resetBtn = document.getElementById('reset-config-btn');
+  if (resetBtn) resetBtn.addEventListener('click', () => runMenuAction('/api/reset-config', 'Reset'));
 })();

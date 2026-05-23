@@ -10,3 +10,6 @@ __pycache__/
 
 # Server logs / temp state
 /tmp/memorymap.pid
+
+# Per-machine config (workspace path, external data file override)
+data/config.local.json

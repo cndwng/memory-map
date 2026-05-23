@@ -101,6 +101,12 @@ header h1 {
   border-radius: 4px;
 }
 .settings-menu button:hover { background: var(--tag-bg); }
+.settings-menu button.muted { color: var(--muted); font-size: 12px; }
+.settings-menu .menu-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 2px;
+}
 
 /* Toast (rebuild errors) */
 .toast {
