@@ -109,15 +109,17 @@
   // If the URL has focus=1, the server pre-set the body class — don't touch
   // localStorage. Otherwise restore from localStorage. (Popups share a Chrome
   // profile with the main app, so we'd otherwise infect the main app's state.)
+  // Also: focus=1 implies "this is a popup" — mark the body so we can hide
+  // the focus/popout action buttons (meaningless in a popup).
   {
     const urlFocus = new URLSearchParams(window.location.search).get('focus');
-    if (urlFocus === null) {
+    if (urlFocus === '1') {
+      document.body.classList.add('is-popup');
+    } else if (urlFocus === null) {
       try {
         if (localStorage.getItem('memory-map-focus') === '1') setFocus(true, { persist: false });
       } catch (e) {}
     }
-    // If urlFocus is '1' the body already has focus-mode from the server.
-    // If urlFocus is '0' we leave it un-focused (no class).
   }
 
   // ---------- rendering ----------
@@ -194,7 +196,7 @@
 
     const inFocus = document.body.classList.contains('focus-mode');
     const downloadBtn = isSynthetic(path) ? '' :
-      '<button class="action-btn inline-action download-btn" title="Download .md">↓ Download</button>';
+      '<button class="action-btn download-btn" title="Download .md">↓ Download</button>';
     const popoutBtn = isSynthetic(path) ? '' :
       '<button class="action-btn popout-btn" title="Open in a new window">⇗ Pop out</button>';
     const focusBtn =
@@ -204,9 +206,9 @@
       '<div class="detail-header">' +
         '<div class="crumb-row">' +
           '<span class="crumb">' + crumbDisplay + '</span>' +
-          '<div class="actions">' + popoutBtn + focusBtn + '</div>' +
+          '<div class="actions">' + downloadBtn + popoutBtn + focusBtn + '</div>' +
         '</div>' +
-        '<h2 class="title-row"><span class="title-name">' + esc(name) + '</span>' + downloadBtn + '</h2>' +
+        '<h2>' + esc(name) + '</h2>' +
         descHtml + triggersHtml + toolsHtml + dateHtml +
       '</div>' +
       '<div class="markdown">' + html + '</div>';

@@ -88,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var serverScript: String { resourcesDir + "/server.py" }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        setUpMenuBar()
         startServer()
         guard let port = self.port else {
             showFatalAlert("Memory Map: server failed to start. Check ~/Library/Application Support/MemoryMap/server.log.")
@@ -95,6 +96,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let url = URL(string: "http://127.0.0.1:\(port)/")!
         openMainWindow(url: url)
+    }
+
+    private func setUpMenuBar() {
+        let mainMenu = NSMenu()
+
+        // Application menu
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+        let appMenu = NSMenu()
+        appMenuItem.submenu = appMenu
+        appMenu.addItem(NSMenuItem(title: "About Memory Map",
+                                   action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+                                   keyEquivalent: ""))
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(NSMenuItem(title: "Hide Memory Map",
+                                   action: #selector(NSApplication.hide(_:)),
+                                   keyEquivalent: "h"))
+        let hideOthers = NSMenuItem(title: "Hide Others",
+                                    action: #selector(NSApplication.hideOtherApplications(_:)),
+                                    keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(hideOthers)
+        appMenu.addItem(NSMenuItem(title: "Show All",
+                                   action: #selector(NSApplication.unhideAllApplications(_:)),
+                                   keyEquivalent: ""))
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(NSMenuItem(title: "Quit Memory Map",
+                                   action: #selector(NSApplication.terminate(_:)),
+                                   keyEquivalent: "q"))
+
+        // File menu
+        let fileMenuItem = NSMenuItem()
+        mainMenu.addItem(fileMenuItem)
+        let fileMenu = NSMenu(title: "File")
+        fileMenuItem.submenu = fileMenu
+        fileMenu.addItem(NSMenuItem(title: "Close Window",
+                                    action: #selector(NSWindow.performClose(_:)),
+                                    keyEquivalent: "w"))
+
+        // Edit menu (so cut/copy/paste/select-all work in the search input)
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenuItem.submenu = editMenu
+        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(redo)
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All",
+                                    action: #selector(NSText.selectAll(_:)),
+                                    keyEquivalent: "a"))
+
+        // Window menu
+        let windowMenuItem = NSMenuItem()
+        mainMenu.addItem(windowMenuItem)
+        let windowMenu = NSMenu(title: "Window")
+        windowMenuItem.submenu = windowMenu
+        windowMenu.addItem(NSMenuItem(title: "Minimize",
+                                      action: #selector(NSWindow.performMiniaturize(_:)),
+                                      keyEquivalent: "m"))
+        windowMenu.addItem(NSMenuItem(title: "Zoom",
+                                      action: #selector(NSWindow.performZoom(_:)),
+                                      keyEquivalent: ""))
+        windowMenu.addItem(NSMenuItem.separator())
+        windowMenu.addItem(NSMenuItem(title: "Bring All to Front",
+                                      action: #selector(NSApplication.arrangeInFront(_:)),
+                                      keyEquivalent: ""))
+        NSApp.windowsMenu = windowMenu
+
+        NSApp.mainMenu = mainMenu
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

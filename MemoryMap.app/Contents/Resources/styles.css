@@ -316,16 +316,11 @@ details { display: block; }
   font: 600 18px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
   margin: 0 0 8px; letter-spacing: -0.005em;
 }
-.detail-header h2.title-row {
-  display: flex; align-items: baseline; gap: 10px;
-  flex-wrap: wrap;
-}
-.detail-header h2 .title-name { flex: 1 1 auto; min-width: 0; }
-.detail-header h2 .inline-action {
-  font-size: 11px;
-  align-self: center;
-  flex-shrink: 0;
-}
+
+/* In popup windows (opened via cmd+click or "Pop out"), the focus/popout
+   buttons aren't meaningful — hide them. The download button stays. */
+body.is-popup .focus-btn,
+body.is-popup .popout-btn { display: none; }
 .detail-header .summary {
   color: var(--muted); font-size: 13px; line-height: 1.55;
   margin: 0 0 10px; max-width: 720px;
