@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Memory Map</title>
+<script>/*__MARKED__*/</script>
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<header>
+  <h1>Memory Map</h1>
+  <p class="lede">
+    Every custom skill, agent, slash command, and persistent memory file in your Claude setup.
+    Pick a tab, click a name to see the file rendered on the right.
+  </p>
+  <div class="controls">
+    <input class="search" id="search" type="search" placeholder="Filter by name or description…">
+    <button class="chip" data-kind="skills" aria-pressed="false">skills</button>
+    <button class="chip" data-kind="agents" aria-pressed="false">agents</button>
+    <button class="chip" data-kind="commands" aria-pressed="false">commands</button>
+    <button class="chip" data-kind="memory" aria-pressed="false">memory</button>
+    <button class="chip" data-kind="hook" aria-pressed="false">hooks</button>
+    <button class="chip" data-kind="routine" aria-pressed="false">routines</button>
+    <button class="chip" data-kind="plan" aria-pressed="false">plans</button>
+    <div class="settings-wrap">
+      <button class="gear-btn" id="gear-btn" title="Settings">⚙</button>
+      <div class="settings-menu" id="settings-menu" role="menu">
+        <button id="regen-btn" role="menuitem">↻ Regenerate directory</button>
+      </div>
+    </div>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="global" aria-selected="true">Global <span class="tab-count">–</span></button>
+    <button class="tab" role="tab" data-tab="memory" aria-selected="false">Memory <span class="tab-count">–</span></button>
+    <button class="tab" role="tab" data-tab="workspace" aria-selected="false">Workspace <span class="tab-count">–</span></button>
+    <button class="tab" role="tab" data-tab="automations" aria-selected="false">Automations <span class="tab-count">–</span></button>
+    <button class="tab" role="tab" data-tab="plugins" aria-selected="false">Plugins <span class="tab-count">–</span></button>
+  </div>
+</header>
+
+<main>
+  <div class="pane left">
+    <div class="tree-pane active" data-tab="global"><div class="tree"></div></div>
+    <div class="tree-pane" data-tab="memory"><div class="tree"></div></div>
+    <div class="tree-pane" data-tab="workspace"><div class="tree"></div></div>
+    <div class="tree-pane" data-tab="automations"><div class="tree"></div></div>
+    <div class="tree-pane" data-tab="plugins"><div class="tree"></div></div>
+  </div>
+  <div class="splitter" id="splitter" role="separator" aria-orientation="vertical"></div>
+  <div class="pane right" id="detail">
+    <div class="detail-empty">Select a file on the left to view it here.</div>
+  </div>
+</main>
+
+<script>/*__DATA__*/</script>
+<script>/*__APP_JS__*/</script>
+</body>
+</html>

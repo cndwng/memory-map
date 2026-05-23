@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Memory Map launcher.
+# Starts a localhost server in the background and opens Chrome in --app mode
+# pointed at it.
+
+set -e
+
+BUNDLE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+RES_DIR="$BUNDLE_DIR/Resources"
+REPO_DIR="$(cd "$BUNDLE_DIR/.." && pwd)"
+
+# Kill any prior server instance.
+PID_FILE="/tmp/memorymap.pid"
+if [ -f "$PID_FILE" ]; then
+  OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
+  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    kill "$OLD_PID" 2>/dev/null || true
+    sleep 0.2
+  fi
+  rm -f "$PID_FILE"
+fi
+
+# Start the server in background. It prints its port as the first stdout line.
+LOG="$HOME/Library/Application Support/MemoryMap/server.log"
+mkdir -p "$(dirname "$LOG")"
+
+# Use a temp fifo / tail approach to capture the port without blocking.
+PORT_FILE="$(mktemp)"
+( python3 "$RES_DIR/server.py" > "$PORT_FILE" 2>"$LOG" ) &
+SERVER_PID=$!
+
+# Wait briefly for the port line to appear.
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  PORT="$(head -n1 "$PORT_FILE" 2>/dev/null || true)"
+  if [ -n "$PORT" ]; then break; fi
+  sleep 0.1
+done
+
+if [ -z "$PORT" ]; then
+  echo "Memory Map: server failed to start. See $LOG" >&2
+  rm -f "$PORT_FILE"
+  exit 1
+fi
+rm -f "$PORT_FILE"
+
+# Isolated Chrome profile so window state / localStorage are independent.
+USER_DATA="$HOME/Library/Application Support/MemoryMap/chrome-profile"
+mkdir -p "$USER_DATA"
+
+exec /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+  --app="http://127.0.0.1:$PORT/" \
+  --user-data-dir="$USER_DATA" \
+  --no-first-run \
+  --no-default-browser-check
