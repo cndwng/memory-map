@@ -13,3 +13,7 @@ __pycache__/
 
 # Per-machine config (workspace path, external data file override)
 data/config.local.json
+
+# Icon Composer scratch exports — regenerated each time you export from Icon
+# Composer. The committed icon.icon/ is the source of truth.
+icon Exports*/
