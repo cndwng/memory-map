@@ -33,7 +33,9 @@ def discover_paths():
 
 
 RES_DIR, REPO = discover_paths()
-BUILD_SCRIPT = os.path.join(REPO, 'build.py')
+# build.py lives next to this server (both inside Resources/) so the bundle is
+# self-contained.
+BUILD_SCRIPT = os.path.join(RES_DIR, 'build.py')
 DATA_FILE = os.path.join(REPO, 'data', 'memory-map.json')
 
 

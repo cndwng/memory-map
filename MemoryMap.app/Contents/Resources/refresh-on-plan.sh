@@ -6,8 +6,8 @@
 set -e
 INPUT=$(cat)
 
-REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-BUILD="$REPO_DIR/build.py"
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD="$SELF_DIR/build.py"
 
 # ExitPlanMode always means a plan event; rebuild unconditionally.
 TOOL=$(printf '%s' "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_name',''))")

@@ -18,7 +18,10 @@ import re
 # ---------- paths ----------
 
 HOME = os.path.expanduser('~')
-REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+# This script lives inside MemoryMap.app/Contents/Resources/. The repo root is
+# three levels up (Resources → Contents → MemoryMap.app → repo).
+SELF_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SELF_DIR)))
 OUT_DIR = os.path.join(REPO_DIR, 'data')
 OUT_FILE = os.path.join(OUT_DIR, 'memory-map.json')
 ROUTINES_FILE = os.path.join(OUT_DIR, 'routines.json')

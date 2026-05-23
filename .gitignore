@@ -1,5 +1,8 @@
 # macOS finder cruft
 .DS_Store
+# Custom-icon resource-fork marker (Finder's "paste image as icon")
+Icon
+Icon?
 
 # Python bytecode
 __pycache__/
