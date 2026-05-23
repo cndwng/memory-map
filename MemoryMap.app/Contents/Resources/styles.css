@@ -79,15 +79,16 @@ header h1 {
 .gear-btn:hover { background: var(--line); color: var(--ink); transform: rotate(20deg); }
 .gear-btn[aria-busy="true"] { opacity: 0.5; transform: rotate(360deg); transition: transform 0.6s; }
 .settings-menu {
-  position: absolute; top: 34px; right: 0;
+  /* Positioned by JS (position: fixed so it escapes header overflow:hidden) */
+  position: fixed;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  min-width: 200px;
+  min-width: 220px;
   padding: 4px;
   display: none;
-  z-index: 100;
+  z-index: 1000;
 }
 .settings-menu.open { display: block; }
 .settings-menu button {

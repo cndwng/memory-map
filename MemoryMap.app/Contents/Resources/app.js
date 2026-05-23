@@ -145,12 +145,23 @@
     return true;
   }
 
-  function downloadCurrent(path, content) {
+  function downloadCurrent(filename, content) {
+    // In the Swift WKWebView host, route through a native save panel —
+    // WKWebView's default <a download> behavior doesn't trigger a file save
+    // without a WKDownloadDelegate, which we don't have.
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.downloadFile) {
+      window.webkit.messageHandlers.downloadFile.postMessage({
+        filename: filename,
+        content: content,
+      });
+      return;
+    }
+    // Browser fallback: blob URL + <a download>.
     const blob = new Blob([content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = path.split('/').pop() || 'memory-map.md';
+    a.download = filename || 'memory-map.md';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -328,15 +339,25 @@
   // ---------- settings menu ----------
   const gearBtn = document.getElementById('gear-btn');
   const settingsMenu = document.getElementById('settings-menu');
+  function positionSettingsMenu() {
+    if (!gearBtn || !settingsMenu) return;
+    const r = gearBtn.getBoundingClientRect();
+    settingsMenu.style.top = (r.bottom + 6) + 'px';
+    settingsMenu.style.right = (window.innerWidth - r.right) + 'px';
+  }
   if (gearBtn && settingsMenu) {
     gearBtn.addEventListener('click', e => {
       e.stopPropagation();
+      positionSettingsMenu();
       settingsMenu.classList.toggle('open');
     });
     document.addEventListener('click', e => {
       if (!settingsMenu.contains(e.target) && e.target !== gearBtn) {
         settingsMenu.classList.remove('open');
       }
+    });
+    window.addEventListener('resize', () => {
+      if (settingsMenu.classList.contains('open')) positionSettingsMenu();
     });
   }
 

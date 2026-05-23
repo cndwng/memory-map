@@ -12,6 +12,7 @@ it). Serves:
 
 PID is written to /tmp/memorymap.pid so subsequent launches can clean up.
 """
+import html
 import http.server
 import json
 import os
@@ -85,15 +86,30 @@ def synthesize_html(focus=False):
 
     data = '{}'
     data_path = active_data_file()
+    data_error = None
     if os.path.exists(data_path):
-        with open(data_path, 'r', encoding='utf-8') as f:
-            data = f.read()
+        try:
+            with open(data_path, 'r', encoding='utf-8') as f:
+                raw = f.read()
+            # Make sure it actually parses — otherwise we'd inject garbage
+            # into the page and leave the UI uninteractable.
+            json.loads(raw)
+            data = raw
+        except Exception as e:
+            data_error = str(e)
+    else:
+        data_error = f'Data file not found: {data_path}'
 
     # Escape </ so user content can't accidentally close the <script> tag.
     data = data.replace('</', '<\\/')
     # Also defang HTML comment delimiters inside the script.
     data = data.replace('<!--', '<\\!--').replace('-->', '--\\>')
     data_script = 'window.MEMORY_MAP_DATA = ' + data + ';'
+
+    if data_error:
+        # Bail out with a self-contained recovery page so the user is never
+        # stranded with a blank/broken view if they pointed at a bad file.
+        return _recovery_page(data_error, data_path)
 
     out = template
     out = out.replace('/*__CSS__*/', css)
@@ -103,6 +119,51 @@ def synthesize_html(focus=False):
     if focus:
         out = out.replace('<body>', '<body class="focus-mode">', 1)
     return out
+
+
+def _recovery_page(error_message, data_path):
+    cfg = load_config()
+    override = cfg.get('data_file')
+    return f'''<!doctype html>
+<html><head><meta charset="utf-8"><title>Memory Map — needs reset</title>
+<style>
+  body {{
+    font: 14px/1.6 -apple-system, system-ui, sans-serif;
+    color: #1b1b18; background: #fafaf7;
+    max-width: 560px; margin: 80px auto; padding: 0 24px;
+  }}
+  h1 {{ font-size: 22px; margin: 0 0 16px; }}
+  p {{ color: #6b6b63; }}
+  code {{ background: #f0ede2; padding: 2px 5px; border-radius: 3px; font-size: 12px; }}
+  button {{
+    background: #1b1b18; color: #fff; border: none;
+    padding: 10px 16px; border-radius: 6px;
+    font: inherit; cursor: pointer; margin-top: 16px;
+  }}
+  button:hover {{ opacity: 0.85; }}
+  .err {{
+    background: #fff; border: 1px solid #e6e4dc; border-radius: 6px;
+    padding: 12px; font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    color: #b91c1c; margin: 12px 0;
+    white-space: pre-wrap;
+  }}
+</style></head>
+<body>
+  <h1>Memory Map can't load its data file</h1>
+  <p>The configured data file isn't valid JSON. This usually happens after picking the wrong file via "📄 Use external data file…".</p>
+  <p><strong>Active data file:</strong><br><code>{html.escape(data_path)}</code></p>
+  {f'<p><strong>Override set in config:</strong> <code>{html.escape(override)}</code></p>' if override else ''}
+  <div class="err">{html.escape(error_message)}</div>
+  <button onclick="reset()">↺ Reset to defaults &amp; reload</button>
+  <p style="margin-top:24px;font-size:12px;">Or quit the app and edit <code>data/config.local.json</code> directly.</p>
+<script>
+  async function reset() {{
+    await fetch('/api/reset-config', {{ method: 'POST' }});
+    location.reload();
+  }}
+</script>
+</body></html>
+'''
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -163,21 +224,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == '/api/pick-data-file':
-            # Show a native macOS file picker for .json files. On pick, write
-            # the chosen path into config.data_file. Front-end reloads to apply.
+            # Show a native macOS file picker for .json files. Validate that
+            # the pick is a .json file AND parses as JSON before saving the
+            # config — picking a non-JSON or malformed file otherwise leaves
+            # the app in an unrenderable state.
             try:
                 proc = subprocess.run(
                     ['osascript', '-e',
-                     'POSIX path of (choose file with prompt "Select a Memory Map JSON file" of type {"json", "public.json"})'],
+                     'POSIX path of (choose file with prompt "Select a Memory Map JSON file" of type {"public.json"})'],
                     capture_output=True, text=True, timeout=120,
                 )
                 if proc.returncode != 0:
-                    # User cancelled — not an error.
                     self._json({'ok': False, 'cancelled': True})
                     return
                 picked = proc.stdout.strip()
                 if not picked or not os.path.isfile(picked):
-                    self._json({'ok': False, 'stderr': 'not a file'}, status=400)
+                    self._json({'ok': False, 'stderr': 'Not a file.'}, status=400)
+                    return
+                if not picked.lower().endswith('.json'):
+                    self._json({'ok': False,
+                                'stderr': f"That file isn't a .json (picked: {os.path.basename(picked)}). Try again."},
+                               status=400)
+                    return
+                # Validate it actually parses.
+                try:
+                    with open(picked) as f:
+                        json.load(f)
+                except Exception as e:
+                    self._json({'ok': False,
+                                'stderr': f"That file isn't valid JSON ({e}). Try again."},
+                               status=400)
                     return
                 cfg = load_config()
                 cfg['data_file'] = picked

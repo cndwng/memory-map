@@ -37,6 +37,7 @@ final class MemoryMapWindowController: NSWindowController, WKUIDelegate, WKScrip
         let config = WKWebViewConfiguration()
         let userContent = WKUserContentController()
         userContent.add(self, name: "openPopup")
+        userContent.add(self, name: "downloadFile")
         config.userContentController = userContent
         // Allow access to localhost over plain http.
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
@@ -62,13 +63,36 @@ final class MemoryMapWindowController: NSWindowController, WKUIDelegate, WKScrip
         return nil
     }
 
-    // JS → Swift message bridge: page can post {path: "..."} to open a popup.
+    // JS → Swift message bridge.
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
         if message.name == "openPopup",
            let body = message.body as? [String: Any],
            let path = body["path"] as? String {
             appDelegate?.openPopupForPath(path)
+        } else if message.name == "downloadFile",
+                  let body = message.body as? [String: Any],
+                  let filename = body["filename"] as? String,
+                  let content = body["content"] as? String {
+            saveDownload(filename: filename, content: content)
+        }
+    }
+
+    private func saveDownload(filename: String, content: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = filename
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = []  // accept whatever filename has
+        panel.title = "Save File"
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory,
+                                                     in: .userDomainMask).first
+        panel.beginSheetModal(for: self.window!) { result in
+            guard result == .OK, let url = panel.url else { return }
+            do {
+                try content.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                NSLog("Memory Map: failed to write download: \(error)")
+            }
         }
     }
 
@@ -134,6 +158,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fileMenu.addItem(NSMenuItem(title: "Close Window",
                                     action: #selector(NSWindow.performClose(_:)),
                                     keyEquivalent: "w"))
+        fileMenu.addItem(NSMenuItem.separator())
+        let resetItem = NSMenuItem(title: "Reset Settings…",
+                                   action: #selector(resetSettings(_:)),
+                                   keyEquivalent: "")
+        resetItem.target = self
+        fileMenu.addItem(resetItem)
 
         // Edit menu (so cut/copy/paste/select-all work in the search input)
         let editMenuItem = NSMenuItem()
@@ -262,6 +292,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: helpers
+
+    @objc func resetSettings(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Reset Memory Map settings?"
+        alert.informativeText = "This deletes data/config.local.json and rebuilds the data file from scratch. Use this if the app rendered blank or the wrong content after picking a workspace folder or external data file."
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+
+        // Hit /api/reset-config on the server to remove the config + rebuild.
+        guard let port = self.port,
+              let url = URL(string: "http://127.0.0.1:\(port)/api/reset-config") else {
+            return
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        let task = URLSession.shared.dataTask(with: req) { [weak self] _, _, _ in
+            DispatchQueue.main.async {
+                self?.mainWindowController?.webView.reload()
+                self?.popupControllers.forEach { $0.webView.reload() }
+            }
+        }
+        task.resume()
+    }
 
     private func showFatalAlert(_ message: String) {
         let alert = NSAlert()
