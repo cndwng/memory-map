@@ -17,6 +17,14 @@
     Pick a tab, click a name to see the file rendered on the right.
   </p>
   <div class="controls">
+    <div class="nav-actions">
+      <button class="nav-btn nav-back" id="nav-back" title="Back (⌘[)" aria-label="Back" disabled>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 3 L5 8 L11 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="nav-btn nav-forward" id="nav-forward" title="Forward (⌘])" aria-label="Forward" disabled>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3 L11 8 L5 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
     <input class="search" id="search" type="search" placeholder="Filter by name or description…">
     <button class="chip" data-kind="skills" aria-pressed="false">skills</button>
     <button class="chip" data-kind="agents" aria-pressed="false">agents</button>
@@ -26,7 +34,7 @@
     <button class="chip" data-kind="routine" aria-pressed="false">routines</button>
     <button class="chip" data-kind="plan" aria-pressed="false">plans</button>
     <div class="settings-wrap">
-      <button class="gear-btn" id="gear-btn" title="Settings">⚙</button>
+      <button class="gear-btn" id="gear-btn" title="Settings"><span class="gear-glyph">⚙</span></button>
       <div class="settings-menu" id="settings-menu" role="menu">
         <button id="regen-btn" role="menuitem">↻ Regenerate directory</button>
         <div class="menu-divider"></div>
@@ -59,6 +67,20 @@
     <div class="detail-empty">Select a file on the left to view it here.</div>
   </div>
 </main>
+
+<div id="find-bar" class="find-bar" hidden>
+  <input type="search" id="find-input" class="find-input" placeholder="Find in page…" autocomplete="off">
+  <span class="find-count" id="find-count" aria-live="polite"></span>
+  <button class="find-btn" id="find-prev" title="Previous (⇧↵)" aria-label="Previous">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10 L8 6 L12 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="find-btn" id="find-next" title="Next (↵)" aria-label="Next">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6 L8 10 L12 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="find-btn find-close" id="find-close" title="Close (Esc)" aria-label="Close">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 5 L11 11 M11 5 L5 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+  </button>
+</div>
 
 <script>/*__DATA__*/</script>
 <script>/*__APP_JS__*/</script>

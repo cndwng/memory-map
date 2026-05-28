@@ -22,27 +22,19 @@ import sys
 import urllib.parse
 
 
-def discover_paths():
-    """Resolve the bundle Resources dir and the repo root from this script's location."""
-    res_dir = os.path.dirname(os.path.abspath(__file__))
-    # res_dir = .../MemoryMap.app/Contents/Resources
-    bundle = os.path.dirname(os.path.dirname(res_dir))
-    # bundle = .../MemoryMap.app
-    repo = os.path.dirname(bundle)
-    # repo = .../memory-map
-    return res_dir, repo
-
-
-RES_DIR, REPO = discover_paths()
-# build.py lives next to this server (both inside Resources/) so the bundle is
-# self-contained.
+RES_DIR = os.path.dirname(os.path.abspath(__file__))
+# Runtime data lives in macOS's per-user Application Support, NOT inside the
+# .app bundle (bundles become read-only once installed/code-signed). Static
+# templates and scripts stay in RES_DIR.
+DATA_DIR = os.path.join(os.path.expanduser('~'),
+                        'Library', 'Application Support', 'MemoryMap')
 BUILD_SCRIPT = os.path.join(RES_DIR, 'build.py')
-DEFAULT_DATA_FILE = os.path.join(REPO, 'data', 'memory-map.json')
-CONFIG_FILE = os.path.join(REPO, 'data', 'config.local.json')
+DEFAULT_DATA_FILE = os.path.join(DATA_DIR, 'memory-map.json')
+CONFIG_FILE = os.path.join(DATA_DIR, 'config.local.json')
 
 
 def load_config():
-    """Read data/config.local.json. Returns a dict; empty if missing/bad."""
+    """Read config.local.json from the app's data dir. Returns a dict; empty if missing/bad."""
     if not os.path.isfile(CONFIG_FILE):
         return {}
     try:
@@ -121,6 +113,74 @@ def synthesize_html(focus=False):
     return out
 
 
+class ViewerError(Exception):
+    pass
+
+
+def render_viewer(raw_path):
+    """Read a .md file from disk and return a self-contained viewer HTML page."""
+    if not raw_path:
+        raise ViewerError('No file specified.')
+    path = os.path.expanduser(raw_path)
+    if not os.path.isabs(path):
+        raise ViewerError(f'Path must be absolute: {raw_path}')
+    real = os.path.realpath(path)
+    home_real = os.path.realpath(os.path.expanduser('~'))
+    # Defensive: only allow files inside the user's home dir.
+    if not real.startswith(home_real + os.sep) and real != home_real:
+        raise ViewerError(f'File is outside your home directory: {real}')
+    if not os.path.isfile(real):
+        raise ViewerError(f'Not a regular file: {real}')
+    if not real.lower().endswith(('.md', '.markdown', '.mdown')):
+        raise ViewerError(f"Not a markdown file: {os.path.basename(real)}")
+    try:
+        with open(real, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read()
+    except Exception as e:
+        raise ViewerError(f'Could not read file: {e}')
+
+    template_path = os.path.join(RES_DIR, 'viewer.html')
+    with open(template_path) as f:
+        template = f.read()
+    marked_path = os.path.join(RES_DIR, 'marked.min.js')
+    with open(marked_path) as f:
+        marked_js = f.read()
+
+    filename = os.path.basename(real)
+    crumb = real.replace(home_real, '~', 1) if real.startswith(home_real) else real
+
+    out = template
+    out = out.replace('__TITLE__', html.escape(filename))
+    out = out.replace('__CRUMB__', html.escape(crumb))
+    out = out.replace('/*__MARKED__*/', marked_js)
+    # JSON-encode content so the JS can safely consume it as a string literal.
+    content_safe = json.dumps(content).replace('</', '<\\/')
+    out = out.replace('__CONTENT_JSON__', content_safe)
+    return out
+
+
+def render_viewer_error(message):
+    return f'''<!doctype html>
+<html><head><meta charset="utf-8"><title>Can't open file</title>
+<style>
+  body {{
+    font: 14px/1.5 -apple-system, system-ui, sans-serif;
+    color: #1b1b18; background: #fafaf7;
+    max-width: 560px; margin: 60px auto; padding: 0 24px;
+  }}
+  h1 {{ font-size: 18px; margin: 0 0 12px; }}
+  .err {{
+    background: #fff; border: 1px solid #e6e4dc; border-radius: 6px;
+    padding: 12px; font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    color: #b91c1c; margin: 8px 0;
+  }}
+</style></head>
+<body><h1>Memory Map can't open that file</h1>
+<div class="err">{html.escape(message)}</div>
+<p>Supported: <code>.md</code>, <code>.markdown</code>, <code>.mdown</code> files inside your home directory.</p>
+</body></html>'''
+
+
 def _recovery_page(error_message, data_path):
     cfg = load_config()
     override = cfg.get('data_file')
@@ -155,7 +215,7 @@ def _recovery_page(error_message, data_path):
   {f'<p><strong>Override set in config:</strong> <code>{html.escape(override)}</code></p>' if override else ''}
   <div class="err">{html.escape(error_message)}</div>
   <button onclick="reset()">↺ Reset to defaults &amp; reload</button>
-  <p style="margin-top:24px;font-size:12px;">Or quit the app and edit <code>data/config.local.json</code> directly.</p>
+  <p style="margin-top:24px;font-size:12px;">Or quit the app and edit <code>~/Library/Application Support/MemoryMap/config.local.json</code> directly.</p>
 <script>
   async function reset() {{
     await fetch('/api/reset-config', {{ method: 'POST' }});
@@ -181,6 +241,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        # Standalone markdown viewer — opened via .md file association.
+        if self.path.startswith('/view'):
+            parsed = urllib.parse.urlparse(self.path)
+            qs = urllib.parse.parse_qs(parsed.query)
+            file_arg = (qs.get('file') or [''])[0]
+            try:
+                body = render_viewer(file_arg).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                self.wfile.write(body)
+            except ViewerError as e:
+                body = render_viewer_error(str(e)).encode('utf-8')
+                self.send_response(404)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            return
+
         # Serve the favicon from the bundle so Chrome --app picks it up for
         # the Dock tile and window-title icon.
         if self.path in ('/favicon.png', '/favicon.ico'):

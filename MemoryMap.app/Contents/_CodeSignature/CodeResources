@@ -6,7 +6,7 @@
 	<dict>
 		<key>Resources/MemoryMap.swift</key>
 		<data>
-		aROwIgqddbudSuLjwB0uxWnjRI4=
+		7zNH5x1yH76sQJIdbqyRTqb3j3M=
 		</data>
 		<key>Resources/app.js</key>
 		<data>
@@ -38,7 +38,7 @@
 		</data>
 		<key>Resources/server.py</key>
 		<data>
-		atSiZFi6mAbj2KcnKHllOKxpxHo=
+		8qseD4hHv3LTQ0UNsyqYS3JRv80=
 		</data>
 		<key>Resources/styles.css</key>
 		<data>
@@ -48,6 +48,10 @@
 		<data>
 		rsCmJBt/YKeg5lh10U6dCX2fCtw=
 		</data>
+		<key>Resources/viewer.html</key>
+		<data>
+		nPtfhbsMQeLqG4qLb+RoqhgRt5Y=
+		</data>
 	</dict>
 	<key>files2</key>
 	<dict>
@@ -55,7 +59,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			8ARlVjbAnCNICTrluaKhjlFD6WWTb67Y16xQgCR6VOA=
+			rPAF/B6QmcniTJgLzzJLxrXGJx6pN3Y4B+d4HDioFFc=
 			</data>
 		</dict>
 		<key>Resources/app.js</key>
@@ -111,7 +115,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			NvVZxD+Ft7CcQOzUEm9JzeagMrZk9MmFFhE11TuBX7Q=
+			MirdL3l4Q/4yjfMQELPSLX+4sbIvI5kdZ382UQtD/ow=
 			</data>
 		</dict>
 		<key>Resources/styles.css</key>
@@ -126,6 +130,13 @@
 			<key>hash2</key>
 			<data>
 			S8mP7Ef/3yGSBP7bdr7PmRRuw7KT+zyHiiL9QpjGeV4=
+			</data>
+		</dict>
+		<key>Resources/viewer.html</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			ZZJ+8uaIPSBJqHk2A972PTs+XjHo+kZqNAVSRFpu09E=
 			</data>
 		</dict>
 	</dict>

@@ -18,11 +18,12 @@ import re
 # ---------- paths ----------
 
 HOME = os.path.expanduser('~')
-# This script lives inside MemoryMap.app/Contents/Resources/. The repo root is
-# three levels up (Resources → Contents → MemoryMap.app → repo).
+# Runtime data lives under macOS's standard per-user data dir, NOT inside the
+# .app bundle. The bundle is read-only after install (and once code-signed),
+# while user data should survive app updates. Same convention as Chrome
+# profiles, app preferences, etc.
 SELF_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SELF_DIR)))
-OUT_DIR = os.path.join(REPO_DIR, 'data')
+OUT_DIR = os.path.join(HOME, 'Library', 'Application Support', 'MemoryMap')
 OUT_FILE = os.path.join(OUT_DIR, 'memory-map.json')
 ROUTINES_FILE = os.path.join(OUT_DIR, 'routines.json')
 CONFIG_FILE = os.path.join(OUT_DIR, 'config.local.json')
@@ -145,30 +146,41 @@ def parse_skill_like(path, name_from_filename=False):
     }
 
 
+MEM_PREFIXES = ('feedback_', 'reference_', 'user_')
+# Types that get their own collapsible folder (the filename prefix is a
+# real convention). Other real types (project, user) sit flat at the
+# parent level since they don't have a consistent filename prefix.
+MEM_GROUPED_TYPES = ('feedback', 'reference', 'user')
+MEM_FLAT_TYPES = ('project', 'other')
+
+
 def parse_memory(path):
     fm, text = parse_frontmatter(path)
-    name = os.path.basename(path).rsplit('.md', 1)[0]
+    fname = os.path.basename(path).rsplit('.md', 1)[0]
+    name = fname
     desc = ''
     mtype = 'project'
     if fm:
         name = get_field(fm, 'name') or name
         desc = get_field(fm, 'description')
-        t = re.search(r'^type:\s*(\w+)', fm, re.MULTILINE)
-        if not t:
-            t = re.search(r'metadata:\s*\n\s+type:\s*(\w+)', fm)
+        # `type:` on its own line, optionally indented. Earlier versions
+        # used a stricter `metadata:\n\s+type:` pattern that broke when
+        # `type:` wasn't the first key under `metadata:` (e.g. when
+        # `node_type:` came first), silently bucketing those files as
+        # the default mtype.
+        t = re.search(r'(?m)^[ \t]*type:\s*(\w+)', fm)
         if t:
             mtype = t.group(1).strip()
     else:
         lines = [l for l in text.splitlines() if l.strip()] if text else []
         if lines:
             desc = lines[0].lstrip('# ').strip()[:160]
-        fname = name
-        if fname.startswith('feedback_'):
-            mtype = 'feedback'
-        elif fname.startswith('reference_'):
-            mtype = 'reference'
-        elif fname.startswith('project_'):
-            mtype = 'project'
+    # Filename prefix overrides frontmatter type — defensive backstop
+    # when the body `type:` drifts out of sync with the filename.
+    for prefix in MEM_PREFIXES:
+        if fname.startswith(prefix):
+            mtype = prefix[:-1]
+            break
     return {
         'name': name, 'desc': desc, 'path': path,
         'content': strip_frontmatter(text or ''),
@@ -549,7 +561,7 @@ def build_workspace_tree(inv):
     if WORKSPACE_DIRS:
         labels = ', '.join(d.replace(HOME, '~') for d in WORKSPACE_DIRS)
     else:
-        labels = '(none — set workspace_dirs in data/config.local.json)'
+        labels = '(none — set workspace_dirs in ~/Library/Application Support/MemoryMap/config.local.json)'
     out = [f'<div class="row root"><span class="folder root-name">{esc(labels)}/</span></div>']
     repos = list(inv['workspace'].items())
     if not repos:
@@ -571,43 +583,82 @@ def build_workspace_tree(inv):
 def build_memory_tree(inv):
     mem = inv['memory']
     out = [f'<div class="row root"><span class="folder root-name">{esc(MEM_DIR_DISPLAY)}/</span></div>']
+
+    # Build the ordered list of top-level entries:
+    #   1. MEMORY.md (index)
+    #   2. Flat unprefixed files (project + user + other), alphabetical
+    #   3. Grouped prefixed folders (feedback_, reference_)
+    entries = []  # each is ('index', it) | ('leaf', it, mtype) | ('group', mtype, items)
     if mem['index']:
-        idx = mem['index']
-        out.append(
-            f'<div class="row leaf" data-kind="memory" data-path="{esc(idx["path"])}" '
-            f'data-search="memory index">'
-            f'<span class="branch">├─ </span>'
-            f'<span class="name clickable">MEMORY.md</span>'
-            f'<span class="badge" style="background:#1b1b18">index</span>'
-            f'</div>'
-        )
-    order = ['user', 'feedback', 'project', 'reference', 'other']
-    types_present = [t for t in order if mem['by_type'].get(t)]
-    for tidx, mtype in enumerate(types_present):
-        is_last = (tidx == len(types_present) - 1)
+        entries.append(('index', mem['index']))
+    flat = []
+    for mt in MEM_FLAT_TYPES:
+        for it in mem['by_type'].get(mt, []):
+            flat.append((it, mt))
+    flat.sort(key=lambda x: os.path.basename(x[0]['path']).lower())
+    for it, mt in flat:
+        entries.append(('leaf', it, mt))
+    for mt in MEM_GROUPED_TYPES:
+        items = mem['by_type'].get(mt, [])
+        if items:
+            entries.append(('group', mt, items))
+
+    for i, entry in enumerate(entries):
+        is_last = (i == len(entries) - 1)
         br = '└─ ' if is_last else '├─ '
-        items = mem['by_type'][mtype]
-        color = MEMORY_TYPE_COLORS.get(mtype, '#64748b')
-        out.append(
-            f'<details class="memtype"><summary class="row memtype-row" data-kind="memory">'
-            f'<span class="branch">{br}</span>'
-            f'<span class="folder" style="color:{color}">{mtype}/</span> '
-            f'<span class="hint">({len(items)})</span></summary>'
-        )
-        out.append('<div class="memtype-body">')
-        for i, it in enumerate(items):
-            is_l = (i == len(items) - 1)
-            cb = '└─ ' if is_l else '├─ '
-            search_text = (it['name'] + ' ' + it.get('desc', '')).lower()
+        if entry[0] == 'index':
+            idx = entry[1]
+            out.append(
+                f'<div class="row leaf" data-kind="memory" data-path="{esc(idx["path"])}" '
+                f'data-search="memory index">'
+                f'<span class="branch">{br}</span>'
+                f'<span class="name clickable">MEMORY.md</span>'
+                f'<span class="badge" style="background:#1b1b18">index</span>'
+                f'</div>'
+            )
+        elif entry[0] == 'leaf':
+            it, mt = entry[1], entry[2]
+            color = MEMORY_TYPE_COLORS.get(mt, '#64748b')
+            display = os.path.basename(it['path'])
+            search_text = (display + ' ' + it.get('desc', '')).lower()
             out.append(
                 f'<div class="row leaf" data-kind="memory" data-path="{esc(it["path"])}" '
                 f'data-search="{esc(search_text)}">'
-                f'<span class="branch">   {cb}</span>'
-                f'<span class="name clickable">{esc(os.path.basename(it["path"]))}</span>'
-                f'<span class="badge" style="background:{color}">{esc(mtype)}</span>'
+                f'<span class="branch">{br}</span>'
+                f'<span class="name clickable">{esc(display)}</span>'
+                f'<span class="badge" style="background:{color}">{esc(mt)}</span>'
                 f'</div>'
             )
-        out.append('</div></details>')
+        else:  # 'group'
+            mt, items = entry[1], entry[2]
+            color = MEMORY_TYPE_COLORS.get(mt, '#64748b')
+            label = mt + '_'  # honest filename prefix, not a fake folder
+            out.append(
+                f'<details class="memtype"><summary class="row memtype-row" data-kind="memory">'
+                f'<span class="branch">{br}</span>'
+                f'<span class="folder" style="color:{color}">{esc(label)}</span> '
+                f'<span class="hint">({len(items)})</span></summary>'
+            )
+            out.append('<div class="memtype-body">')
+            prefix = mt + '_'
+            for j, it in enumerate(items):
+                is_l = (j == len(items) - 1)
+                cb = '└─ ' if is_l else '├─ '
+                # Keep the full filename in the search index so the
+                # stripped prefix remains findable.
+                search_text = (os.path.basename(it['path']) + ' ' + it.get('desc', '')).lower()
+                display = os.path.basename(it['path'])
+                if display.startswith(prefix):
+                    display = display[len(prefix):]
+                out.append(
+                    f'<div class="row leaf" data-kind="memory" data-path="{esc(it["path"])}" '
+                    f'data-search="{esc(search_text)}">'
+                    f'<span class="branch">   {cb}</span>'
+                    f'<span class="name clickable">{esc(display)}</span>'
+                    f'<span class="badge" style="background:{color}">{esc(mt)}</span>'
+                    f'</div>'
+                )
+            out.append('</div></details>')
     return '\n'.join(out)
 
 

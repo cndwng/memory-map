@@ -22,6 +22,8 @@
   const tabs = document.querySelectorAll('.tab');
   const panes = document.querySelectorAll('.tree-pane');
   const detail = document.getElementById('detail');
+  const navBackBtn = document.getElementById('nav-back');
+  const navForwardBtn = document.getElementById('nav-forward');
 
   const state = { activeKind: null, q: '' };
 
@@ -121,6 +123,139 @@
       } catch (e) {}
     }
   }
+
+  // ---------- navigation history ----------
+  // Mirrors the browser's History API so that back/forward buttons,
+  // cmd+[ / cmd+], and the WKWebView two-finger swipe gesture all share one
+  // stack. We track our own index because the History API doesn't expose it,
+  // and we need it to enable/disable the buttons.
+  const nav = { stack: [], index: -1 };
+
+  function pathToUrl(path) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('path', path);
+    return url.toString();
+  }
+
+  function navigate(path, opts) {
+    opts = opts || {};
+    if (opts.replace) {
+      nav.stack = [path];
+      nav.index = 0;
+      history.replaceState({ path: path, idx: 0 }, '', pathToUrl(path));
+    } else if (nav.stack[nav.index] === path) {
+      // Same path — just re-render, don't grow history.
+    } else {
+      nav.stack = nav.stack.slice(0, nav.index + 1);
+      nav.stack.push(path);
+      nav.index = nav.stack.length - 1;
+      history.pushState({ path: path, idx: nav.index }, '', pathToUrl(path));
+    }
+    const ok = openByPath(path, opts);
+    updateNavButtons();
+    return ok;
+  }
+
+  let animClearTimer = null;
+  function animateDetailNav(dir) {
+    detail.classList.remove('anim-back', 'anim-forward');
+    // Force reflow so a same-direction repeat actually restarts the animation.
+    void detail.offsetWidth;
+    detail.classList.add('anim-' + dir);
+    if (animClearTimer) clearTimeout(animClearTimer);
+    animClearTimer = setTimeout(() => {
+      detail.classList.remove('anim-back', 'anim-forward');
+    }, 250);
+  }
+
+  window.addEventListener('popstate', e => {
+    const state = e.state;
+    const prevIdx = nav.index;
+    if (state && typeof state.idx === 'number' && state.path) {
+      nav.index = state.idx;
+      if (state.idx < prevIdx) animateDetailNav('back');
+      else if (state.idx > prevIdx) animateDetailNav('forward');
+      openByPath(state.path, { scroll: true });
+    } else {
+      // Back past the first pushed entry — clear the detail panel.
+      if (prevIdx >= 0) animateDetailNav('back');
+      nav.index = -1;
+      if (lastSelected) lastSelected.classList.remove('selected');
+      lastSelected = null;
+      detail.innerHTML = '<div class="detail-empty">Select a file on the left to view it here.</div>';
+    }
+    updateNavButtons();
+  });
+
+  function canGoBack() { return nav.index > 0; }
+  function canGoForward() { return nav.index + 1 < nav.stack.length; }
+
+  // Exposed for the Swift menu items (View → Back / Forward, ⌘[ / ⌘]) so
+  // they respect our nav gates instead of falling through to pre-reload
+  // entries in the WKWebView's history.
+  window.__mm_back = () => { if (canGoBack()) history.back(); };
+  window.__mm_forward = () => { if (canGoForward()) history.forward(); };
+
+  function updateNavButtons() {
+    if (navBackBtn) navBackBtn.disabled = !canGoBack();
+    if (navForwardBtn) navForwardBtn.disabled = !canGoForward();
+  }
+
+  if (navBackBtn) navBackBtn.addEventListener('click', () => { if (canGoBack()) history.back(); });
+  if (navForwardBtn) navForwardBtn.addEventListener('click', () => { if (canGoForward()) history.forward(); });
+
+  // ---------- trackpad swipe detection ----------
+  // Two-finger horizontal trackpad swipes fire wheel events with deltaX.
+  // We accumulate momentum until it crosses a threshold, then trigger nav.
+  // Skip when the gesture begins over a horizontally-scrollable element
+  // (e.g. a wide code block) so legit scrolling still works.
+  (function () {
+    let acc = 0;
+    let lastEventAt = 0;
+    let fired = false;
+
+    function hasHorizontalScroll(target) {
+      // Walk up, but stop at .pane — the pane's `overflow: auto` is mainly
+      // for vertical scrolling, and counting it here would suppress swipes
+      // on any tall page. Only count *inner* horizontally-scrollable
+      // elements (e.g. a wide <pre> code block inside the markdown).
+      let el = target;
+      while (el && el !== document.body) {
+        if (el.classList && el.classList.contains('pane')) return false;
+        if (el.scrollWidth > el.clientWidth + 1) {
+          const overflowX = getComputedStyle(el).overflowX;
+          if (overflowX === 'auto' || overflowX === 'scroll') return true;
+        }
+        el = el.parentElement;
+      }
+      return false;
+    }
+
+    window.addEventListener('wheel', e => {
+      const now = performance.now();
+      // Idle gap → start a fresh gesture.
+      if (now - lastEventAt > 200) { acc = 0; fired = false; }
+      lastEventAt = now;
+
+      // Need a meaningfully horizontal swipe.
+      if (Math.abs(e.deltaX) < Math.abs(e.deltaY) * 1.5) { acc = 0; return; }
+      if (hasHorizontalScroll(e.target)) { acc = 0; return; }
+      // Suppress any browser-level horizontal scroll while we own the gesture,
+      // so nothing else nudges during the swipe.
+      e.preventDefault();
+      if (fired) return;
+
+      acc += e.deltaX;
+      const THRESHOLD = 80;
+      if (acc <= -THRESHOLD && canGoBack()) {
+        fired = true;
+        history.back();
+      } else if (acc >= THRESHOLD && canGoForward()) {
+        fired = true;
+        history.forward();
+      }
+    }, { passive: false });
+  })();
 
   // ---------- rendering ----------
   let lastSelected = null;
@@ -264,13 +399,16 @@
         a.classList.add('internal-link');
         a.addEventListener('click', e => {
           e.preventDefault();
-          openByPath(cleanAbs);
+          navigate(cleanAbs);
         });
       } else {
         a.setAttribute('href', 'file://' + cleanAbs);
         a.setAttribute('title', 'External to map: ' + tilde);
       }
     });
+
+    // Re-run an open find against the freshly-rendered content.
+    if (window.__mm_reFind) window.__mm_reFind();
   }
 
   // ---------- leaf clicks ----------
@@ -298,7 +436,7 @@
         return;
       }
       e.stopPropagation();
-      renderRow(r);
+      navigate(r.dataset.path, { scroll: false });
     });
   });
 
@@ -330,10 +468,171 @@
     const initialPath = params.get('path');
     if (initialPath) {
       // Render synchronously so the empty-state flash doesn't show before
-      // the file paints.
-      openByPath(initialPath, { scroll: false });
+      // the file paints. Use replace so we don't leave an empty entry behind.
+      navigate(initialPath, { replace: true, scroll: false });
     }
     // (focus param is already handled server-side by setting body.focus-mode)
+  })();
+
+  // ---------- keyboard shortcuts ----------
+  document.addEventListener('keydown', e => {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.key === '[' || e.key === 'ArrowLeft') {
+      if (canGoBack()) { e.preventDefault(); history.back(); }
+    } else if (e.key === ']' || e.key === 'ArrowRight') {
+      if (canGoForward()) { e.preventDefault(); history.forward(); }
+    }
+  });
+
+  // ---------- in-page find (⌘F) ----------
+  // Highlights matches inside .markdown with <mark>, navigates with
+  // Enter / Shift+Enter. The bar floats over the top-right of the
+  // detail pane and persists across navigation (re-runs the query on
+  // the new content).
+  (function () {
+    const bar = document.getElementById('find-bar');
+    const input = document.getElementById('find-input');
+    const countEl = document.getElementById('find-count');
+    const nextBtn = document.getElementById('find-next');
+    const prevBtn = document.getElementById('find-prev');
+    const closeBtn = document.getElementById('find-close');
+    if (!bar || !input) return;
+
+    let matches = [];
+    let currentIdx = -1;
+
+    function isOpen() { return !bar.hidden; }
+
+    function clearHighlights() {
+      const root = document.getElementById('detail');
+      if (!root) return;
+      root.querySelectorAll('mark.find-match').forEach(m => {
+        m.replaceWith(document.createTextNode(m.textContent));
+      });
+      root.normalize();
+    }
+
+    function highlight(query) {
+      clearHighlights();
+      if (!query) return [];
+      const root = document.querySelector('#detail .markdown');
+      if (!root) return [];
+      const q = query.toLowerCase();
+      const textNodes = [];
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
+          if (node.parentElement && node.parentElement.closest('button')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      });
+      let n;
+      while ((n = walker.nextNode())) textNodes.push(n);
+      const found = [];
+      for (const node of textNodes) {
+        const text = node.nodeValue;
+        const lower = text.toLowerCase();
+        let from = 0, idx;
+        const parts = [];
+        while ((idx = lower.indexOf(q, from)) !== -1) {
+          if (idx > from) parts.push({ t: text.slice(from, idx), m: false });
+          parts.push({ t: text.slice(idx, idx + q.length), m: true });
+          from = idx + q.length;
+        }
+        if (!parts.some(p => p.m)) continue;
+        if (from < text.length) parts.push({ t: text.slice(from), m: false });
+        const frag = document.createDocumentFragment();
+        for (const p of parts) {
+          if (p.m) {
+            const mk = document.createElement('mark');
+            mk.className = 'find-match';
+            mk.textContent = p.t;
+            frag.appendChild(mk);
+            found.push(mk);
+          } else {
+            frag.appendChild(document.createTextNode(p.t));
+          }
+        }
+        node.parentNode.replaceChild(frag, node);
+      }
+      return found;
+    }
+
+    function updateCount() {
+      if (matches.length === 0) {
+        countEl.textContent = input.value ? '0' : '';
+      } else {
+        countEl.textContent = (currentIdx + 1) + ' / ' + matches.length;
+      }
+      nextBtn.disabled = matches.length === 0;
+      prevBtn.disabled = matches.length === 0;
+    }
+
+    function gotoMatch(idx) {
+      if (matches.length === 0) return;
+      matches.forEach(m => m.classList.remove('current'));
+      currentIdx = (idx + matches.length) % matches.length;
+      const m = matches[currentIdx];
+      m.classList.add('current');
+      m.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      updateCount();
+    }
+
+    function runFind() {
+      matches = highlight(input.value);
+      if (matches.length > 0) {
+        currentIdx = 0;
+        matches[0].classList.add('current');
+        matches[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } else {
+        currentIdx = -1;
+      }
+      updateCount();
+    }
+
+    function open() {
+      bar.hidden = false;
+      input.focus();
+      input.select();
+      if (input.value) runFind();
+    }
+
+    function close() {
+      bar.hidden = true;
+      clearHighlights();
+      matches = [];
+      currentIdx = -1;
+      updateCount();
+    }
+
+    input.addEventListener('input', runFind);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        gotoMatch(currentIdx + (e.shiftKey ? -1 : 1));
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      }
+    });
+    nextBtn.addEventListener('click', () => gotoMatch(currentIdx + 1));
+    prevBtn.addEventListener('click', () => gotoMatch(currentIdx - 1));
+    closeBtn.addEventListener('click', close);
+    // Global Esc — handles the case where focus has moved off the find input.
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && isOpen() && document.activeElement !== input) {
+        close();
+      }
+    });
+
+    window.__mm_findInDetail = open;
+    // Called by renderRow after the detail pane re-renders, so an open find
+    // bar re-runs against the new content.
+    window.__mm_reFind = () => { if (isOpen()) runFind(); };
   })();
 
   // ---------- settings menu ----------

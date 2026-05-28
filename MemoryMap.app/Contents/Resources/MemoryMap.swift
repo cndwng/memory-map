@@ -106,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var port: Int?
     var mainWindowController: MemoryMapWindowController?
     var popupControllers: [MemoryMapWindowController] = []
+    var viewerControllers: [MemoryMapWindowController] = []
 
     let bundlePath = Bundle.main.bundlePath  // .../MemoryMap.app
     var resourcesDir: String { bundlePath + "/Contents/Resources" }
@@ -114,12 +115,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpMenuBar()
         startServer()
-        guard let port = self.port else {
+        guard self.port != nil else {
             showFatalAlert("Memory Map: server failed to start. Check ~/Library/Application Support/MemoryMap/server.log.")
             return
         }
-        let url = URL(string: "http://127.0.0.1:\(port)/")!
-        openMainWindow(url: url)
+        // Defer opening the main window — if we were launched with a file
+        // (.md double-click), `application(_:open:)` fires shortly and we want
+        // to skip the main window entirely.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self = self else { return }
+            if self.mainWindowController == nil
+                && self.popupControllers.isEmpty
+                && self.viewerControllers.isEmpty {
+                self.openMainWindow(url: URL(string: "http://127.0.0.1:\(self.port!)/")!)
+            }
+        }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.isFileURL {
+            openViewerWindow(filePath: url.path)
+        }
     }
 
     private func setUpMenuBar() {
@@ -155,6 +171,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(fileMenuItem)
         let fileMenu = NSMenu(title: "File")
         fileMenuItem.submenu = fileMenu
+        let newWinItem = NSMenuItem(title: "New Window",
+                                    action: #selector(newWindow(_:)),
+                                    keyEquivalent: "n")
+        newWinItem.target = self
+        fileMenu.addItem(newWinItem)
         fileMenu.addItem(NSMenuItem(title: "Close Window",
                                     action: #selector(NSWindow.performClose(_:)),
                                     keyEquivalent: "w"))
@@ -181,6 +202,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(NSMenuItem(title: "Select All",
                                     action: #selector(NSText.selectAll(_:)),
                                     keyEquivalent: "a"))
+        editMenu.addItem(NSMenuItem.separator())
+        let findItem = NSMenuItem(title: "Find",
+                                  action: #selector(findInPage(_:)),
+                                  keyEquivalent: "f")
+        findItem.target = self
+        editMenu.addItem(findItem)
+
+        // View menu — navigation + reload, all routed to the key window's webview.
+        let viewMenuItem = NSMenuItem()
+        mainMenu.addItem(viewMenuItem)
+        let viewMenu = NSMenu(title: "View")
+        viewMenuItem.submenu = viewMenu
+        let backItem = NSMenuItem(title: "Back",
+                                  action: #selector(navBack(_:)),
+                                  keyEquivalent: "[")
+        backItem.target = self
+        viewMenu.addItem(backItem)
+        let fwdItem = NSMenuItem(title: "Forward",
+                                 action: #selector(navForward(_:)),
+                                 keyEquivalent: "]")
+        fwdItem.target = self
+        viewMenu.addItem(fwdItem)
+        viewMenu.addItem(NSMenuItem.separator())
+        let reloadItem = NSMenuItem(title: "Reload",
+                                    action: #selector(reloadPage(_:)),
+                                    keyEquivalent: "r")
+        reloadItem.target = self
+        viewMenu.addItem(reloadItem)
 
         // Window menu
         let windowMenuItem = NSMenuItem()
@@ -291,12 +340,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    func openViewerWindow(filePath: String) {
+        guard let port = self.port else { return }
+        let encoded = filePath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        guard let url = URL(string: "http://127.0.0.1:\(port)/view?file=\(encoded)") else { return }
+        let wc = MemoryMapWindowController(url: url, isPopup: true, appDelegate: self)
+        wc.window?.title = (filePath as NSString).lastPathComponent
+        wc.window?.delegate = self
+        viewerControllers.append(wc)
+        wc.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: menu actions
+
+    private func windowControllerFor(_ win: NSWindow?) -> MemoryMapWindowController? {
+        guard let win = win else { return nil }
+        if mainWindowController?.window === win { return mainWindowController }
+        if let p = popupControllers.first(where: { $0.window === win }) { return p }
+        if let v = viewerControllers.first(where: { $0.window === win }) { return v }
+        return nil
+    }
+
+    @objc func reloadPage(_ sender: Any?) {
+        windowControllerFor(NSApp.keyWindow)?.webView.reload()
+    }
+
+    @objc func navBack(_ sender: Any?) {
+        // Route through the page's gated nav so pre-reload entries in the
+        // WKWebView's history aren't reachable.
+        windowControllerFor(NSApp.keyWindow)?.webView.evaluateJavaScript(
+            "if (typeof window.__mm_back === 'function') window.__mm_back();"
+        )
+    }
+
+    @objc func navForward(_ sender: Any?) {
+        windowControllerFor(NSApp.keyWindow)?.webView.evaluateJavaScript(
+            "if (typeof window.__mm_forward === 'function') window.__mm_forward();"
+        )
+    }
+
+    @objc func findInPage(_ sender: Any?) {
+        windowControllerFor(NSApp.keyWindow)?.webView.evaluateJavaScript(
+            "if (typeof window.__mm_findInDetail === 'function') window.__mm_findInDetail();"
+        )
+    }
+
+    @objc func newWindow(_ sender: Any?) {
+        guard let port = self.port else { return }
+        let url = URL(string: "http://127.0.0.1:\(port)/")!
+        if mainWindowController == nil {
+            openMainWindow(url: url)
+        } else {
+            // Additional main-sized window. Tracked in popupControllers for
+            // cleanup; isPopup:false so it inherits the larger window size.
+            let wc = MemoryMapWindowController(url: url, isPopup: false, appDelegate: self)
+            wc.window?.delegate = self
+            popupControllers.append(wc)
+            wc.showWindow(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
     // MARK: helpers
 
     @objc func resetSettings(_ sender: Any?) {
         let alert = NSAlert()
         alert.messageText = "Reset Memory Map settings?"
-        alert.informativeText = "This deletes data/config.local.json and rebuilds the data file from scratch. Use this if the app rendered blank or the wrong content after picking a workspace folder or external data file."
+        alert.informativeText = "This deletes ~/Library/Application Support/MemoryMap/config.local.json and rebuilds the data file from scratch. Use this if the app rendered blank or the wrong content after picking a workspace folder or external data file."
         alert.addButton(withTitle: "Reset")
         alert.addButton(withTitle: "Cancel")
         let response = alert.runModal()
@@ -335,6 +446,7 @@ extension AppDelegate: NSWindowDelegate {
             mainWindowController = nil
         } else {
             popupControllers.removeAll { $0.window === closing }
+            viewerControllers.removeAll { $0.window === closing }
         }
     }
 }

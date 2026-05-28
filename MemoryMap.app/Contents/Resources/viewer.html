@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<script>/*__MARKED__*/</script>
+<style>
+  :root {
+    --bg: #fafaf7;
+    --ink: #1b1b18;
+    --muted: #6b6b63;
+    --dim: #a8a59b;
+    --line: #e6e4dc;
+    --tag-bg: #f0ede2;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 32px 28px 64px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .crumb {
+    font: 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--dim);
+    margin-bottom: 6px;
+    word-break: break-all;
+  }
+  h1.title {
+    font: 600 20px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+    margin: 0 0 24px;
+    letter-spacing: -0.005em;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .markdown h1, .markdown h2, .markdown h3, .markdown h4 {
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    margin: 20px 0 8px;
+  }
+  .markdown h1 { font-size: 20px; }
+  .markdown h2 { font-size: 17px; }
+  .markdown h3 { font-size: 15px; }
+  .markdown h4 { font-size: 14px; color: var(--muted); }
+  .markdown p { margin: 0 0 12px; }
+  .markdown ul, .markdown ol { margin: 0 0 12px 0; padding-left: 22px; }
+  .markdown li { margin-bottom: 4px; }
+  .markdown code {
+    font: 0.92em/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+    background: var(--tag-bg);
+    padding: 0.5px 4px;
+    border-radius: 3px;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  .markdown pre {
+    background: #1b1b18; color: #f0ede2;
+    padding: 12px 14px; border-radius: 6px;
+    overflow-x: auto;
+    font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+    margin: 0 0 14px;
+  }
+  .markdown pre code { background: none; padding: 0; color: inherit; }
+  .markdown blockquote {
+    border-left: 3px solid var(--line);
+    padding-left: 12px; color: var(--muted);
+    margin: 0 0 12px;
+  }
+  .markdown hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
+  .markdown table {
+    border-collapse: collapse; font-size: 13px;
+    margin: 0 0 14px;
+  }
+  .markdown table th, .markdown table td {
+    border: 1px solid var(--line); padding: 5px 9px; text-align: left;
+  }
+  .markdown table th { background: var(--tag-bg); }
+  .markdown a { color: #6366f1; }
+  .markdown img { max-width: 100%; height: auto; }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161613;
+      --ink: #ece9de;
+      --muted: #a9a69b;
+      --dim: #6b6961;
+      --line: #2a2a26;
+      --tag-bg: #2a2a26;
+    }
+    .markdown pre { background: #0e0e0c; color: #ece9de; }
+    .markdown a { color: #a5b4fc; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="crumb">__CRUMB__</div>
+  <h1 class="title">__TITLE__</h1>
+  <div class="markdown" id="content"></div>
+</div>
+<script>
+  const raw = __CONTENT_JSON__;
+  document.getElementById('content').innerHTML = window.marked
+    ? window.marked.parse(raw)
+    : '<pre>' + raw.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]) + '</pre>';
+</script>
+</body>
+</html>

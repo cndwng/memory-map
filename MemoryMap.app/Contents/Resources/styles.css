@@ -35,6 +35,30 @@ header h1 {
 .lede { color: var(--muted); margin: 0 0 16px; max-width: 720px; font-size: 13px; }
 
 .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.controls .nav-actions { display: flex; gap: 4px; }
+.nav-btn {
+  width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--card); color: var(--muted);
+  cursor: pointer;
+}
+.nav-btn svg { width: 14px; height: 14px; display: block; }
+.nav-btn:hover:not(:disabled) { color: var(--ink); border-color: var(--ink); }
+.nav-btn:active:not(:disabled) { background: var(--line); }
+.nav-btn:disabled { color: var(--dim); opacity: 0.5; cursor: default; }
+
+/* Unified focus ring for keyboard navigation. */
+.nav-btn:focus-visible,
+.gear-btn:focus-visible,
+.chip:focus-visible,
+.tab:focus-visible,
+.action-btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.gear-btn:active { background: var(--line); }
 .search {
   flex: 1; min-width: 200px; max-width: 320px;
   padding: 7px 11px;
@@ -78,6 +102,8 @@ header h1 {
 }
 .gear-btn:hover { background: var(--line); color: var(--ink); transform: rotate(20deg); }
 .gear-btn[aria-busy="true"] { opacity: 0.5; transform: rotate(360deg); transition: transform 0.6s; }
+/* Optical centering — the gear glyph sits low in its line box. */
+.gear-glyph { display: block; transform: translateY(-1px); }
 .settings-menu {
   /* Positioned by JS (position: fixed so it escapes header overflow:hidden) */
   position: fixed;
@@ -107,6 +133,61 @@ header h1 {
   height: 1px;
   background: var(--line);
   margin: 4px 2px;
+}
+
+/* In-page find bar (⌘F) — floats over the top-right of the detail pane. */
+.find-bar {
+  position: fixed;
+  top: 16px; right: 24px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 5px 6px 5px 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.10);
+  z-index: 150;
+}
+.find-bar[hidden] { display: none; }
+.find-input {
+  border: none; background: none; outline: none;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+  color: var(--ink);
+  width: 180px; padding: 4px 4px;
+}
+.find-input::placeholder { color: var(--dim); }
+.find-input::-webkit-search-cancel-button { display: none; }
+.find-count {
+  font: 11px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+  color: var(--muted);
+  padding: 0 6px; min-width: 44px; text-align: center;
+  white-space: nowrap;
+}
+.find-btn {
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0;
+  border: none; background: none;
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.find-btn svg { width: 12px; height: 12px; display: block; }
+.find-btn:hover:not(:disabled) { background: var(--tag-bg); color: var(--ink); }
+.find-btn:disabled { color: var(--dim); opacity: 0.4; cursor: default; }
+.find-btn:focus-visible {
+  outline: 2px solid var(--ink); outline-offset: 1px;
+}
+
+mark.find-match {
+  background: rgba(245, 158, 11, 0.32);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+mark.find-match.current {
+  background: rgba(245, 158, 11, 0.78);
 }
 
 /* Toast (rebuild errors) */
@@ -202,7 +283,7 @@ body.focus-mode .pane.left, body.focus-mode .splitter {
   pointer-events: none;
 }
 .pane.right { transition: padding 0.3s ease; }
-body.focus-mode .pane.right { padding: 32px 28px; }
+body.focus-mode .pane.right { padding: 52px 44px; }
 body.focus-mode .markdown { max-width: 720px; margin: 0 auto; }
 body.focus-mode .detail-header { max-width: 720px; margin: 0 auto 18px; }
 
@@ -284,6 +365,24 @@ details { display: block; }
   font-style: italic;
   padding: 60px 20px;
   text-align: center;
+}
+
+/* Back/forward navigation animation — only the .markdown body slides.
+   The detail-header (crumb + action buttons) stays as a stable frame
+   so the panel doesn't feel like the whole thing is shifting. */
+@keyframes nav-slide-from-left {
+  from { transform: translate3d(-60px, 0, 0); opacity: 0; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+@keyframes nav-slide-from-right {
+  from { transform: translate3d(60px, 0, 0); opacity: 0; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+.pane.right.anim-back .markdown {
+  animation: nav-slide-from-left 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.pane.right.anim-forward .markdown {
+  animation: nav-slide-from-right 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .detail-header {
   border-bottom: 1px solid var(--line);
