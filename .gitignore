@@ -18,6 +18,9 @@ data/
 # Session scratchpads (transcript probes, etc.)
 .tmp_*.txt
 
+# Local build artifacts (./build.sh output). CI uploads these to releases.
+dist/
+
 # Icon Composer scratch exports — regenerated each time you export from Icon
 # Composer. The committed icon.icon/ is the source of truth.
 icon Exports*/

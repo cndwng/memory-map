@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Manual trigger for testing the workflow without cutting a real release.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Build .app and zip
+        run: ./build.sh
+
+      - name: Read version from Info.plist
+        id: version
+        run: |
+          V=$(defaults read "$PWD/MemoryMap.app/Contents/Info" CFBundleShortVersionString)
+          echo "value=$V" >> "$GITHUB_OUTPUT"
+          echo "zip=dist/MemoryMap-v${V}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Sanity-check tag matches Info.plist version
+        if: github.event_name == 'push'
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          IPV="${{ steps.version.outputs.value }}"
+          if [ "$TAG" != "$IPV" ]; then
+            echo "::error::Tag ($TAG) doesn't match Info.plist version ($IPV). Bump CFBundleShortVersionString before tagging."
+            exit 1
+          fi
+
+      - name: Upload zip as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MemoryMap-v${{ steps.version.outputs.value }}
+          path: ${{ steps.version.outputs.zip }}
+
+      - name: Create GitHub release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.version.outputs.zip }}
+          name: Memory Map v${{ steps.version.outputs.value }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
