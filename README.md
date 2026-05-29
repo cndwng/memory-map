@@ -6,28 +6,29 @@ A local Mac app that shows every custom skill, agent, slash command, hook, sched
 
 ```
 memory-map/
-├── data/
-│   ├── memory-map.json                       # the data (generated)
-│   └── routines.json                         # cached remote routines list
-└── MemoryMap.app/
+└── Memory Map.app/
     └── Contents/Resources/
-        ├── build.py                          # reads ~/.claude/ → writes data/memory-map.json
+        ├── build.py                          # reads ~/.claude/ → writes the data file
         ├── refresh-on-plan.sh                # hook helper; called from settings.json
         ├── server.py                         # tiny localhost HTTP server
+        ├── welcome.html                      # first-launch onboarding
         ├── template.html / styles.css / app.js   # the viewer
         └── marked.min.js                     # vendored markdown parser
 ```
 
-Everything the viewer needs lives inside the `.app` bundle. The `data/` folder sits next to it as the only thing that varies per-machine.
+Everything the viewer needs lives inside the `.app` bundle. Runtime data
+(the built JSON, per-machine config) lives in
+`~/Library/Application Support/MemoryMap/` so the bundle stays portable
+and survives reinstalls.
 
 ## Quick start
 
 ```bash
 # Generate the data file
-python3 MemoryMap.app/Contents/Resources/build.py
+python3 "Memory Map.app/Contents/Resources/build.py"
 
 # Open the app
-open MemoryMap.app
+open "Memory Map.app"
 ```
 
 The app is a small native Cocoa wrapper (`Contents/MacOS/MemoryMap`, ~110 KB Swift binary) that starts the localhost HTTP server in the background and opens a WKWebView window on it. One Dock tile, custom icon, single-window behavior. The Swift source is in `Contents/Resources/MemoryMap.swift` if you want to rebuild (`swiftc -O MemoryMap.swift -o ../MacOS/MemoryMap`).
@@ -38,7 +39,7 @@ Three ways:
 
 1. **In-app** — click the gear (⚙) in the top-right → "↻ Regenerate directory."
 2. **Hooks** — if you've installed the `PostToolUse` and `SessionStart` hooks in `~/.claude/settings.json` (see below), the data file regenerates automatically on plan writes and session start.
-3. **Manually** — run `python3 MemoryMap.app/Contents/Resources/build.py` then refresh the browser window.
+3. **Manually** — run `python3 "Memory Map.app/Contents/Resources/build.py"` then refresh the browser window.
 
 ## Setting up hooks (optional)
 
@@ -49,7 +50,7 @@ Add this to your `~/.claude/settings.json` under the existing `hooks` key. Repla
   {
     "matcher": "Write|Edit|ExitPlanMode",
     "hooks": [
-      { "type": "command", "command": "bash /Users/yourname/workspace/memory-map/MemoryMap.app/Contents/Resources/refresh-on-plan.sh" }
+      { "type": "command", "command": "bash '/Users/yourname/workspace/memory-map/Memory Map.app/Contents/Resources/refresh-on-plan.sh'" }
     ]
   }
 ],
@@ -57,7 +58,7 @@ Add this to your `~/.claude/settings.json` under the existing `hooks` key. Repla
   {
     "matcher": "",
     "hooks": [
-      { "type": "command", "command": "python3 /Users/yourname/workspace/memory-map/MemoryMap.app/Contents/Resources/build.py >/dev/null 2>&1 &" }
+      { "type": "command", "command": "python3 '/Users/yourname/workspace/memory-map/Memory Map.app/Contents/Resources/build.py' >/dev/null 2>&1 &" }
     ]
   }
 ]
@@ -66,8 +67,8 @@ Add this to your `~/.claude/settings.json` under the existing `hooks` key. Repla
 ## Moving to another Mac
 
 1. Clone (or copy) this folder to the new machine.
-2. Run `python3 MemoryMap.app/Contents/Resources/build.py` — it reads the **new machine's** `~/.claude/` and writes its own `data/memory-map.json`.
-3. `open MemoryMap.app`.
+2. Run `python3 "Memory Map.app/Contents/Resources/build.py"` — it reads the **new machine's** `~/.claude/` and writes `~/Library/Application Support/MemoryMap/memory-map.json`.
+3. `open "Memory Map.app"`.
 
 The committed `data/memory-map.json` in the repo reflects whichever machine generated it last. The app shows that data until you re-run `build.py` on the new machine.
 

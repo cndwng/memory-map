@@ -159,7 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Files that arrived before the server was ready; drained once port is set.
     private var pendingFileOpens: [String] = []
 
-    let bundlePath = Bundle.main.bundlePath  // .../MemoryMap.app
+    let bundlePath = Bundle.main.bundlePath  // .../Memory Map.app
     var resourcesDir: String { bundlePath + "/Contents/Resources" }
     var serverScript: String { resourcesDir + "/server.py" }
 
