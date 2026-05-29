@@ -929,17 +929,40 @@ def build_automations_tree(inv):
 
 def build_plugins_tree(inv):
     out = ['<div class="row root"><span class="folder root-name">~/.claude/plugins/ <span class="hint">(installed)</span></span></div>']
-    plugins = sorted(inv['plugins'].items(), key=lambda kv: kv[0])
-    for pidx, (key, meta) in enumerate(plugins):
-        is_last = (pidx == len(plugins) - 1)
-        br = '└─ ' if is_last else '├─ '
-        ver = f' <span class="version">v{esc(meta["version"])}</span>' if meta.get('version') else ''
+    # Group plugins by marketplace (the part after `@` in keys like
+    # "gusto-essentials@gusto-claude-code"). Plugins without `@` are bucketed
+    # under "(no marketplace)".
+    by_market = {}
+    for key, meta in sorted(inv['plugins'].items(), key=lambda kv: kv[0]):
+        if '@' in key:
+            name, market = key.rsplit('@', 1)
+        else:
+            name, market = key, '(no marketplace)'
+        by_market.setdefault(market, []).append((name, key, meta))
+    markets = sorted(by_market.keys())
+    for midx, market in enumerate(markets):
+        is_last_market = (midx == len(markets) - 1)
+        mbr = '└─ ' if is_last_market else '├─ '
+        plugins_in_market = by_market[market]
         out.append(
-            f'<details class="plugin"><summary tabindex="-1" class="row plugin-row">'
-            f'<span class="branch">{br}</span>'
-            f'<span class="folder">{esc(key)}/</span>{ver}</summary>'
+            f'<details class="marketplace" open><summary tabindex="-1" class="row group-row" data-kind="plugin">'
+            f'<span class="branch">{mbr}</span>'
+            f'<span class="folder">{esc(market)}</span> '
+            f'<span class="hint">({len(plugins_in_market)})</span></summary>'
         )
-        out.append(f'<div class="plugin-body">{render_group(meta["items"], indent="   ")}</div>')
+        inner_indent = '   ' if is_last_market else '│  '
+        for pidx, (name, key, meta) in enumerate(plugins_in_market):
+            is_last = (pidx == len(plugins_in_market) - 1)
+            br = '└─ ' if is_last else '├─ '
+            ver = f' <span class="version">v{esc(meta["version"])}</span>' if meta.get('version') else ''
+            out.append(
+                f'<details class="plugin"><summary tabindex="-1" class="row plugin-row">'
+                f'<span class="branch">{inner_indent}{br}</span>'
+                f'<span class="folder">{esc(name)}/</span>{ver}</summary>'
+            )
+            child_indent = inner_indent + ('   ' if is_last else '│  ')
+            out.append(f'<div class="plugin-body">{render_group(meta["items"], indent=child_indent)}</div>')
+            out.append('</details>')
         out.append('</details>')
     return '\n'.join(out)
 
