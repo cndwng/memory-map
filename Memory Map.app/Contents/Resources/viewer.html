@@ -84,6 +84,52 @@
   .markdown a { color: #6366f1; }
   .markdown img { max-width: 100%; height: auto; }
 
+  /* Find bar — same look as the main app's find. Floats top-right. */
+  .find-bar {
+    position: fixed;
+    top: 16px; right: 24px;
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 5px 6px 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.10);
+    z-index: 150;
+  }
+  .find-bar[hidden] { display: none; }
+  .find-input {
+    border: none; background: none; outline: none;
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+    color: var(--ink);
+    width: 180px; padding: 4px 4px;
+  }
+  .find-input::placeholder { color: var(--dim); }
+  .find-input::-webkit-search-cancel-button { display: none; }
+  .find-count {
+    font: 11px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+    color: var(--muted);
+    padding: 0 6px; min-width: 44px; text-align: center;
+    white-space: nowrap;
+  }
+  .find-btn {
+    width: 26px; height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; border: none; background: none; border-radius: 5px;
+    color: var(--muted); cursor: pointer;
+  }
+  .find-btn svg { width: 12px; height: 12px; display: block; }
+  .find-btn:hover:not(:disabled) { background: var(--tag-bg); color: var(--ink); }
+  .find-btn:disabled { color: var(--dim); opacity: 0.4; cursor: default; }
+  mark.find-match {
+    background: rgba(245, 158, 11, 0.32);
+    color: inherit; border-radius: 2px; padding: 0 1px;
+  }
+  mark.find-match.current {
+    background: rgba(245, 158, 11, 0.78);
+  }
+
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #161613;
@@ -95,6 +141,9 @@
     }
     .markdown pre { background: #0e0e0c; color: #ece9de; }
     .markdown a { color: #a5b4fc; }
+    .find-bar { background: #1d1d1a; }
+    mark.find-match { background: rgba(245, 158, 11, 0.3); }
+    mark.find-match.current { background: rgba(245, 158, 11, 0.6); }
   }
 </style>
 </head>
@@ -104,14 +153,176 @@
   <h1 class="title">__TITLE__</h1>
   <div class="markdown" id="content"></div>
 </div>
+
+<div id="find-bar" class="find-bar" hidden>
+  <input type="search" id="find-input" class="find-input" placeholder="Find in page…" autocomplete="off">
+  <span class="find-count" id="find-count" aria-live="polite"></span>
+  <button class="find-btn" id="find-prev" title="Previous (⇧↵)" aria-label="Previous">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10 L8 6 L12 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="find-btn" id="find-next" title="Next (↵)" aria-label="Next">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6 L8 10 L12 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="find-btn find-close" id="find-close" title="Close (Esc)" aria-label="Close">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 5 L11 11 M11 5 L5 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+  </button>
+</div>
+
 <script>
   const raw = __CONTENT_JSON__;
   document.getElementById('content').innerHTML = window.marked
     ? window.marked.parse(raw)
     : '<pre>' + raw.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]) + '</pre>';
-  // Silence macOS's "no handler" beep on Esc.
+
+  // ---------- in-page find (⌘F) ----------
+  // Standalone version of the find IIFE in app.js. Scoped to .markdown
+  // (this viewer only has the one content surface).
+  (function () {
+    const bar = document.getElementById('find-bar');
+    const input = document.getElementById('find-input');
+    const countEl = document.getElementById('find-count');
+    const nextBtn = document.getElementById('find-next');
+    const prevBtn = document.getElementById('find-prev');
+    const closeBtn = document.getElementById('find-close');
+    if (!bar || !input) return;
+
+    let matches = [];
+    let currentIdx = -1;
+
+    function isOpen() { return !bar.hidden; }
+
+    function clearHighlights() {
+      const root = document.getElementById('content');
+      if (!root) return;
+      root.querySelectorAll('mark.find-match').forEach(m => {
+        m.replaceWith(document.createTextNode(m.textContent));
+      });
+      root.normalize();
+    }
+
+    function highlight(query) {
+      clearHighlights();
+      if (!query) return [];
+      const root = document.querySelector('.markdown');
+      if (!root) return [];
+      const q = query.toLowerCase();
+      const textNodes = [];
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
+          if (node.parentElement && node.parentElement.closest('button')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      });
+      let n;
+      while ((n = walker.nextNode())) textNodes.push(n);
+      const found = [];
+      for (const node of textNodes) {
+        const text = node.nodeValue;
+        const lower = text.toLowerCase();
+        let from = 0, idx;
+        const parts = [];
+        while ((idx = lower.indexOf(q, from)) !== -1) {
+          if (idx > from) parts.push({ t: text.slice(from, idx), m: false });
+          parts.push({ t: text.slice(idx, idx + q.length), m: true });
+          from = idx + q.length;
+        }
+        if (!parts.some(p => p.m)) continue;
+        if (from < text.length) parts.push({ t: text.slice(from), m: false });
+        const frag = document.createDocumentFragment();
+        for (const p of parts) {
+          if (p.m) {
+            const mk = document.createElement('mark');
+            mk.className = 'find-match';
+            mk.textContent = p.t;
+            frag.appendChild(mk);
+            found.push(mk);
+          } else {
+            frag.appendChild(document.createTextNode(p.t));
+          }
+        }
+        node.parentNode.replaceChild(frag, node);
+      }
+      return found;
+    }
+
+    function updateCount() {
+      if (matches.length === 0) {
+        countEl.textContent = input.value ? '0' : '';
+      } else {
+        countEl.textContent = (currentIdx + 1) + ' / ' + matches.length;
+      }
+      nextBtn.disabled = matches.length === 0;
+      prevBtn.disabled = matches.length === 0;
+    }
+
+    function gotoMatch(idx) {
+      if (matches.length === 0) return;
+      matches.forEach(m => m.classList.remove('current'));
+      currentIdx = (idx + matches.length) % matches.length;
+      const m = matches[currentIdx];
+      m.classList.add('current');
+      m.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      updateCount();
+    }
+
+    function runFind() {
+      matches = highlight(input.value);
+      if (matches.length > 0) {
+        currentIdx = 0;
+        matches[0].classList.add('current');
+        matches[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } else {
+        currentIdx = -1;
+      }
+      updateCount();
+    }
+
+    function open() {
+      bar.hidden = false;
+      input.focus();
+      input.select();
+      if (input.value) runFind();
+    }
+
+    function close() {
+      bar.hidden = true;
+      clearHighlights();
+      matches = [];
+      currentIdx = -1;
+      updateCount();
+    }
+
+    input.addEventListener('input', runFind);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        gotoMatch(currentIdx + (e.shiftKey ? -1 : 1));
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      }
+    });
+    nextBtn.addEventListener('click', () => gotoMatch(currentIdx + 1));
+    prevBtn.addEventListener('click', () => gotoMatch(currentIdx - 1));
+    closeBtn.addEventListener('click', close);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && isOpen() && document.activeElement !== input) {
+        close();
+      }
+    });
+
+    // Exposed for the Swift Edit→Find menu item (⌘F).
+    window.__mm_findInDetail = open;
+  })();
+
+  // Silence macOS's "no handler" beep on Esc when find isn't open.
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') e.preventDefault();
+    if (e.key === 'Escape' && document.getElementById('find-bar').hidden) {
+      e.preventDefault();
+    }
   });
 </script>
 </body>
