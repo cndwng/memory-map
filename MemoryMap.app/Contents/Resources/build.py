@@ -533,20 +533,33 @@ MEMORY_TYPE_COLORS = {
 DOC_BADGE_COLOR = '#94a3b8'
 
 
-def render_nested_row(nested, indent_prefix, is_last, parent_kind='doc'):
+def render_nested_row(nested, indent_prefix, is_last, parent_kind='doc',
+                      display_override=None):
     branch = '└─ ' if is_last else '├─ '
-    display = nested['name']
-    search_text = (display + ' ' + (nested.get('content', '') or '')[:200]).lower()
-    # Inherit the parent's data-kind so the chip filter keeps parent + children
-    # together — clicking "agents" still shows nested agent helper docs.
+    display = display_override if display_override is not None else nested['name']
+    search_text = (nested['name'] + ' ' + (nested.get('content', '') or '')[:200]).lower()
     return (
-        f'<div class="row leaf nested-doc" data-kind="{parent_kind}" data-path="{esc(nested["path"])}" '
+        f'<div class="row leaf nested-doc" tabindex="-1" data-kind="{parent_kind}" data-path="{esc(nested["path"])}" '
         f'data-search="{esc(search_text)}">'
         f'<span class="branch">{indent_prefix}{branch}</span>'
         f'<span class="name clickable">{esc(display)}</span>'
         f'<span class="badge" style="background:{DOC_BADGE_COLOR}">doc</span>'
         f'</div>'
     )
+
+
+def group_nested_by_subdir(nested):
+    """Partition nested items into (subdir-grouped, loose-top-level)."""
+    by_dir = {}
+    loose = []
+    for n in nested:
+        parts = n['name'].split('/', 1)
+        if len(parts) == 1:
+            loose.append(n)
+        else:
+            by_dir.setdefault(parts[0], []).append(n)
+    # Stable order: subdirs alphabetical, then loose files in their original order.
+    return list(by_dir.items()), loose
 
 
 def render_item_row(it, kind, indent_prefix, is_last, badge_color, badge_label, mtype=None):
@@ -557,7 +570,7 @@ def render_item_row(it, kind, indent_prefix, is_last, badge_color, badge_label, 
     nested = it.get('nested') or []
     if not nested:
         return (
-            f'<div class="row leaf" data-kind="{data_kind}" data-path="{esc(it["path"])}" '
+            f'<div class="row leaf" tabindex="-1" data-kind="{data_kind}" data-path="{esc(it["path"])}" '
             f'data-search="{esc(search_text)}">'
             f'<span class="branch">{indent_prefix}{branch}</span>'
             f'<span class="name clickable">{esc(display)}</span>'
@@ -570,7 +583,7 @@ def render_item_row(it, kind, indent_prefix, is_last, badge_color, badge_label, 
     out = []
     out.append('<details class="nestable" open>')
     out.append(
-        f'<summary class="row leaf has-nested" data-kind="{data_kind}" '
+        f'<summary tabindex="-1" class="row leaf has-nested" data-kind="{data_kind}" '
         f'data-path="{esc(it["path"])}" data-search="{esc(search_text)}">'
         f'<span class="branch">{indent_prefix}{branch}</span>'
         f'<span class="name clickable">{esc(display)}</span>'
@@ -579,8 +592,40 @@ def render_item_row(it, kind, indent_prefix, is_last, badge_color, badge_label, 
         f'</summary>'
     )
     child_indent = indent_prefix + ('   ' if is_last else '│  ')
-    for i, n in enumerate(nested):
-        out.append(render_nested_row(n, child_indent, i == len(nested) - 1, parent_kind=data_kind))
+    # Files inside the skill dir can sit at top level OR in subdirs (typically
+    # `references/`). Group subdir files into a collapsible folder rather than
+    # showing them flat with prefixed paths.
+    subdir_groups, loose = group_nested_by_subdir(nested)
+    # Flatten into render order: subdirs first, then any loose top-level files.
+    flat_entries = []
+    for subdir, items in subdir_groups:
+        flat_entries.append(('subdir', subdir, items))
+    for n in loose:
+        flat_entries.append(('file', None, n))
+    for i, entry in enumerate(flat_entries):
+        is_last_child = (i == len(flat_entries) - 1)
+        cb = '└─ ' if is_last_child else '├─ '
+        if entry[0] == 'file':
+            n = entry[2]
+            out.append(render_nested_row(n, child_indent, is_last_child,
+                                         parent_kind=data_kind,
+                                         display_override=os.path.basename(n['name'])))
+        else:
+            subdir, items = entry[1], entry[2]
+            out.append(
+                f'<details class="nestable-sub" open><summary tabindex="-1" class="row group-row subdir-row" '
+                f'data-kind="{data_kind}">'
+                f'<span class="branch">{child_indent}{cb}</span>'
+                f'<span class="folder">{esc(subdir)}/</span> '
+                f'<span class="hint">({len(items)})</span></summary>'
+            )
+            inner_indent = child_indent + ('   ' if is_last_child else '│  ')
+            for j, sub in enumerate(items):
+                sub_display = sub['name'].split('/', 1)[1]  # strip subdir prefix
+                out.append(render_nested_row(sub, inner_indent, j == len(items) - 1,
+                                             parent_kind=data_kind,
+                                             display_override=sub_display))
+            out.append('</details>')
     out.append('</details>')
     return '\n'.join(out)
 
@@ -589,11 +634,11 @@ def render_claude_md_row(it, indent_prefix, is_last):
     branch = '└─ ' if is_last else '├─ '
     search_text = ('CLAUDE.md ' + (it.get('desc', '') or '')).lower()
     return (
-        f'<div class="row leaf" data-kind="claudemd" data-path="{esc(it["path"])}" '
+        f'<div class="row leaf" tabindex="-1" data-kind="claudemd" data-path="{esc(it["path"])}" '
         f'data-search="{esc(search_text)}">'
         f'<span class="branch">{indent_prefix}{branch}</span>'
         f'<span class="name clickable">CLAUDE.md</span>'
-        f'<span class="badge" style="background:#1b1b18">global</span>'
+        f'<span class="badge badge-ink">global</span>'
         f'</div>'
     )
 
@@ -605,7 +650,7 @@ def render_agent_orphans(orphans, indent_prefix):
         return ''
     out = []
     out.append(
-        f'<details class="kindgroup"><summary class="row group-row" data-kind="doc">'
+        f'<details class="kindgroup"><summary tabindex="-1" class="row group-row" data-kind="doc">'
         f'<span class="branch">{indent_prefix}└─ </span>'
         f'<span class="folder">references/</span> '
         f'<span class="hint">({len(orphans)})</span></summary>'
@@ -635,7 +680,7 @@ def render_group(items_by_kind, indent=''):
         label, color = KIND_BADGES[kind]
         items = items_by_kind[kind]
         out.append(
-            f'<details class="kindgroup" open><summary class="row group-row" '
+            f'<details class="kindgroup" open><summary tabindex="-1" class="row group-row" '
             f'data-kind="{kind}"><span class="branch">{indent}{kbr}</span>'
             f'<span class="folder">{kind}/</span> '
             f'<span class="hint">({len(items)})</span></summary>'
@@ -666,7 +711,7 @@ def build_global_tree(inv):
         gbr = '└─ ' if is_last else '├─ '
         if group == 'plans':
             out.append(
-                f'<details class="kindgroup"><summary class="row group-row" data-kind="plan">'
+                f'<details class="kindgroup"><summary tabindex="-1" class="row group-row" data-kind="plan">'
                 f'<span class="branch">{gbr}</span><span class="folder">plans/</span> '
                 f'<span class="hint">({len(plans)})</span></summary>'
             )
@@ -684,7 +729,7 @@ def build_global_tree(inv):
                 label = datetime.datetime.strptime(mkey, '%Y-%m').strftime('%B %Y')
                 open_attr = 'open' if midx == 0 else ''
                 out.append(
-                    f'<details class="plangroup" {open_attr}><summary class="row group-row" '
+                    f'<details class="plangroup" {open_attr}><summary tabindex="-1" class="row group-row" '
                     f'data-kind="plan"><span class="branch">{outer_indent}{mbr}</span>'
                     f'<span class="folder">{esc(label)}/</span> '
                     f'<span class="hint">({len(items)})</span></summary>'
@@ -697,7 +742,7 @@ def build_global_tree(inv):
                         p['title'] + ' ' + p.get('summary', '') + ' ' + os.path.basename(p['path'])
                     ).lower()
                     out.append(
-                        f'<div class="row leaf" data-kind="plan" data-path="{esc(p["path"])}" '
+                        f'<div class="row leaf" tabindex="-1" data-kind="plan" data-path="{esc(p["path"])}" '
                         f'data-search="{esc(search_text)}">'
                         f'<span class="branch">{inner_indent}{cb}</span>'
                         f'<span class="name clickable">{esc(p["title"])}</span>'
@@ -710,7 +755,7 @@ def build_global_tree(inv):
             label, color = KIND_BADGES[kind]
             items = items_by_kind[kind]
             out.append(
-                f'<details class="kindgroup" open><summary class="row group-row" '
+                f'<details class="kindgroup" open><summary tabindex="-1" class="row group-row" '
                 f'data-kind="{kind}"><span class="branch">{gbr}</span>'
                 f'<span class="folder">{kind}/</span> '
                 f'<span class="hint">({len(items)})</span></summary>'
@@ -739,7 +784,7 @@ def build_workspace_tree(inv):
         is_last = (ridx == len(repos) - 1)
         br = '└─ ' if is_last else '├─ '
         out.append(
-            f'<details class="repo"><summary class="row repo-row">'
+            f'<details class="repo"><summary tabindex="-1" class="row repo-row">'
             f'<span class="branch">{br}</span>'
             f'<span class="folder">{esc(repo)}/.claude/</span></summary>'
         )
@@ -777,11 +822,11 @@ def build_memory_tree(inv):
         if entry[0] == 'index':
             idx = entry[1]
             out.append(
-                f'<div class="row leaf" data-kind="memory" data-path="{esc(idx["path"])}" '
+                f'<div class="row leaf" tabindex="-1" data-kind="memory" data-path="{esc(idx["path"])}" '
                 f'data-search="memory index">'
                 f'<span class="branch">{br}</span>'
                 f'<span class="name clickable">MEMORY.md</span>'
-                f'<span class="badge" style="background:#1b1b18">index</span>'
+                f'<span class="badge badge-ink">index</span>'
                 f'</div>'
             )
         elif entry[0] == 'leaf':
@@ -790,7 +835,7 @@ def build_memory_tree(inv):
             display = os.path.basename(it['path'])
             search_text = (display + ' ' + it.get('desc', '')).lower()
             out.append(
-                f'<div class="row leaf" data-kind="memory" data-path="{esc(it["path"])}" '
+                f'<div class="row leaf" tabindex="-1" data-kind="memory" data-path="{esc(it["path"])}" '
                 f'data-search="{esc(search_text)}">'
                 f'<span class="branch">{br}</span>'
                 f'<span class="name clickable">{esc(display)}</span>'
@@ -802,7 +847,7 @@ def build_memory_tree(inv):
             color = MEMORY_TYPE_COLORS.get(mt, '#64748b')
             label = mt + '_'  # honest filename prefix, not a fake folder
             out.append(
-                f'<details class="memtype"><summary class="row memtype-row" data-kind="memory">'
+                f'<details class="memtype"><summary tabindex="-1" class="row memtype-row" data-kind="memory">'
                 f'<span class="branch">{br}</span>'
                 f'<span class="folder" style="color:{color}">{esc(label)}</span> '
                 f'<span class="hint">({len(items)})</span></summary>'
@@ -819,7 +864,7 @@ def build_memory_tree(inv):
                 if display.startswith(prefix):
                     display = display[len(prefix):]
                 out.append(
-                    f'<div class="row leaf" data-kind="memory" data-path="{esc(it["path"])}" '
+                    f'<div class="row leaf" tabindex="-1" data-kind="memory" data-path="{esc(it["path"])}" '
                     f'data-search="{esc(search_text)}">'
                     f'<span class="branch">   {cb}</span>'
                     f'<span class="name clickable">{esc(display)}</span>'
@@ -838,8 +883,8 @@ def build_automations_tree(inv):
         is_last_group = not routines
         gbr = '└─ ' if is_last_group else '├─ '
         out.append(
-            f'<details class="autogroup" open><summary class="row group-row" data-kind="hook">'
-            f'<span class="branch">{gbr}</span><span class="folder">hooks/</span> '
+            f'<details class="autogroup" open><summary tabindex="-1" class="row group-row" data-kind="hook">'
+            f'<span class="branch">{gbr}</span><span class="folder">hooks</span> '
             f'<span class="hint">({len(hooks)})</span></summary>'
         )
         for i, h in enumerate(hooks):
@@ -849,7 +894,7 @@ def build_automations_tree(inv):
             label = f"{h['event']}" + (f" [{h['matcher']}]" if h['matcher'] else '')
             search_text = f"{h['event']} {h['matcher']} {h['command']}".lower()
             out.append(
-                f'<div class="row leaf" data-kind="hook" data-path="{esc(key)}" '
+                f'<div class="row leaf" tabindex="-1" data-kind="hook" data-path="{esc(key)}" '
                 f'data-search="{esc(search_text)}">'
                 f'<span class="branch">   {cb}</span>'
                 f'<span class="name clickable">{esc(label)}</span>'
@@ -859,8 +904,8 @@ def build_automations_tree(inv):
     if routines:
         gbr = '└─ '
         out.append(
-            f'<details class="autogroup" open><summary class="row group-row" data-kind="routine">'
-            f'<span class="branch">{gbr}</span><span class="folder">routines/</span> '
+            f'<details class="autogroup" open><summary tabindex="-1" class="row group-row" data-kind="routine">'
+            f'<span class="branch">{gbr}</span><span class="folder">routines</span> '
             f'<span class="hint">({len(routines)})</span></summary>'
         )
         for i, r in enumerate(routines):
@@ -870,7 +915,7 @@ def build_automations_tree(inv):
             search_text = f"{r['name']} {r.get('cron','')} {r.get('description','')}".lower()
             enabled_glyph = '' if r.get('enabled') else ' (disabled)'
             out.append(
-                f'<div class="row leaf" data-kind="routine" data-path="{esc(key)}" '
+                f'<div class="row leaf" tabindex="-1" data-kind="routine" data-path="{esc(key)}" '
                 f'data-search="{esc(search_text)}">'
                 f'<span class="branch">   {cb}</span>'
                 f'<span class="name clickable">{esc(r["name"])}{enabled_glyph}</span>'
@@ -890,7 +935,7 @@ def build_plugins_tree(inv):
         br = '└─ ' if is_last else '├─ '
         ver = f' <span class="version">v{esc(meta["version"])}</span>' if meta.get('version') else ''
         out.append(
-            f'<details class="plugin"><summary class="row plugin-row">'
+            f'<details class="plugin"><summary tabindex="-1" class="row plugin-row">'
             f'<span class="branch">{br}</span>'
             f'<span class="folder">{esc(key)}/</span>{ver}</summary>'
         )

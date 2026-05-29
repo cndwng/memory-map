@@ -50,6 +50,9 @@
       const kindOk = !active || k === active;
       g.parentElement.classList.toggle('hidden', !kindOk);
     });
+    // The roving-tabindex anchor may have just been hidden — re-anchor on a
+    // currently-visible row so Tab still lands somewhere useful.
+    if (typeof initRovingAnchor === 'function') initRovingAnchor();
   }
   chips.forEach(c => c.addEventListener('click', () => {
     const k = c.dataset.kind;
@@ -488,15 +491,209 @@
     // (focus param is already handled server-side by setting body.focus-mode)
   })();
 
-  // ---------- keyboard shortcuts ----------
-  document.addEventListener('keydown', e => {
-    if (!(e.metaKey || e.ctrlKey)) return;
+  // ---------- page zoom (⌘+ / ⌘- / ⌘0) ----------
+  const ZOOM_KEY = 'memory-map-zoom';
+  const ZOOM_MIN = 0.5;
+  const ZOOM_MAX = 3.0;
+  const ZOOM_STEP = 0.1;
+  function readZoom() {
+    try {
+      const v = parseFloat(localStorage.getItem(ZOOM_KEY) || '1');
+      return isNaN(v) ? 1 : v;
+    } catch (e) { return 1; }
+  }
+  function setZoom(z) {
+    z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(z * 100) / 100));
+    document.documentElement.style.setProperty('--zoom', z);
+    try { localStorage.setItem(ZOOM_KEY, String(z)); } catch (e) {}
+  }
+  setZoom(readZoom());
+
+  // ---------- keyboard shortcuts + boop suppression + tree nav ----------
+  // Simple navigation model:
+  //  - ALL navigable rows (leaves + group summaries) participate in ↑/↓
+  //  - One fixed anchor (the first visible row) has tabindex="0" so Tab
+  //    always lands on it. Arrow movement updates focus but NOT the anchor,
+  //    so Tab in/out always returns to the top.
+  //  - Enter / Space activates: opens the file for leaves, toggles
+  //    expand/collapse for group summaries.
+
+  function isVisibleRow(r) {
+    if (r.classList.contains('hidden')) return false;
+    let el = r;
+    while (el && el.parentElement) {
+      const parent = el.parentElement;
+      if (parent.tagName === 'DETAILS' && !parent.open) {
+        // Inside a closed details. Only visible if `el` IS its <summary>.
+        if (el.tagName !== 'SUMMARY') return false;
+      }
+      if (parent.classList && parent.classList.contains('hidden')) return false;
+      el = parent;
+    }
+    return true;
+  }
+
+  function visibleNavRows() {
+    const pane = document.querySelector('.tree-pane.active');
+    if (!pane) return [];
+    // Every row the user might want to land on: leaves AND group summaries.
+    const all = pane.querySelectorAll('.row.leaf, summary.row');
+    return Array.from(all).filter(isVisibleRow);
+  }
+
+  function updateTreeTabAnchor() {
+    // Reset every tree row to -1, then promote the first visible row of
+    // the active pane to 0 so Tab lands there.
+    document.querySelectorAll('.tree-pane .row.leaf, .tree-pane summary.row')
+      .forEach(r => r.setAttribute('tabindex', '-1'));
+    const first = visibleNavRows()[0];
+    if (first) first.setAttribute('tabindex', '0');
+  }
+
+  function moveTreeFocus(delta) {
+    const items = visibleNavRows();
+    if (items.length === 0) return;
+    const current = document.activeElement;
+    let i = current ? items.indexOf(current) : -1;
+    if (i < 0) i = delta > 0 ? -1 : items.length;
+    i = (i + delta + items.length) % items.length;
+    items[i].focus();
+    items[i].scrollIntoView({ block: 'nearest' });
+  }
+
+  function activateTreeFocus() {
+    const target = document.activeElement;
+    if (!target) return false;
+    // Pure group summary → toggle the parent <details>.
+    if (target.tagName === 'SUMMARY' && !target.classList.contains('leaf')) {
+      const details = target.parentElement;
+      if (details && details.tagName === 'DETAILS') {
+        details.open = !details.open;
+        // The anchor may have just been hidden by a collapse — refresh.
+        updateTreeTabAnchor();
+      }
+      return true;
+    }
+    // has-nested leaf summary → open the file (don't toggle).
+    if (target.classList.contains('has-nested')) {
+      const nameEl = target.querySelector('.name');
+      if (nameEl) nameEl.click();
+      return true;
+    }
+    // Plain leaf → click the row (its handler navigates).
+    if (target.classList.contains('leaf')) {
+      target.click();
+      return true;
+    }
+    return false;
+  }
+
+  // Re-anchor when a <details> opens/closes (visibility of children flips).
+  // `toggle` doesn't bubble, so listen in capture phase.
+  document.addEventListener('toggle', updateTreeTabAnchor, true);
+
+  // Initial setup + re-anchor on tab switch.
+  updateTreeTabAnchor();
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', updateTreeTabAnchor));
+
+  // Back-compat names used elsewhere (no-ops now — anchor is always first).
+  const initRovingAnchor = updateTreeTabAnchor;
+  const initTreeFocus = updateTreeTabAnchor;
+
+  const isPopupBody = () => document.body.classList.contains('is-popup');
+  // Keys we let the webview/native handle as-is (so cut/copy/paste,
+  // selecting text, typing in inputs, etc. all keep working).
+  function isPassThroughKey(e) {
     const tag = (e.target && e.target.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    if (e.key === '[' || e.key === 'ArrowLeft') {
-      if (canGoBack()) { e.preventDefault(); history.back(); }
-    } else if (e.key === ']' || e.key === 'ArrowRight') {
-      if (canGoForward()) { e.preventDefault(); history.forward(); }
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return true;
+    if (['Meta', 'Control', 'Shift', 'Alt', 'CapsLock'].includes(e.key)) return true;
+    // Standard text-editing shortcuts.
+    if ((e.metaKey || e.ctrlKey) && /^[cxvazyACXVAZY]$/.test(e.key)) return true;
+    return false;
+  }
+
+  document.addEventListener('keydown', e => {
+    // Escape: close find / modal, exit focus mode, suppress beep.
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      const modalOpen = !document.getElementById('modal-backdrop').hidden;
+      const findOpen = !document.getElementById('find-bar').hidden;
+      if (!modalOpen && !findOpen && !isPopupBody()
+          && document.body.classList.contains('focus-mode')) {
+        setFocus(false);
+      }
+      return;
+    }
+
+    // Up/Down arrows when not in a field → move keyboard focus through
+    // the active tree's visible rows.
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp')
+        && !(e.metaKey || e.ctrlKey)
+        && !isPassThroughKey(e)) {
+      e.preventDefault();
+      moveTreeFocus(e.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    // Enter or Space on a focused tree row → activate it.
+    // Leaf → open file. Group summary → toggle expand/collapse.
+    if ((e.key === 'Enter' || e.key === ' ') && !isPassThroughKey(e)) {
+      const focused = document.activeElement;
+      if (focused && focused.classList
+          && (focused.classList.contains('leaf')
+              || (focused.tagName === 'SUMMARY' && focused.classList.contains('row')))) {
+        e.preventDefault();
+        activateTreeFocus();
+        return;
+      }
+    }
+
+    // Cmd-shortcuts: back/forward, tab switching, zoom.
+    if (e.metaKey || e.ctrlKey) {
+      const inField = isPassThroughKey(e);
+      if (e.key === '[' || e.key === 'ArrowLeft') {
+        if (inField) return;
+        if (canGoBack()) { e.preventDefault(); history.back(); }
+        return;
+      }
+      if (e.key === ']' || e.key === 'ArrowRight') {
+        if (inField) return;
+        if (canGoForward()) { e.preventDefault(); history.forward(); }
+        return;
+      }
+      if (/^[1-5]$/.test(e.key)) {
+        if (inField) return;
+        const tabsList = Array.from(document.querySelectorAll('.tabs .tab'));
+        const target = tabsList[parseInt(e.key, 10) - 1];
+        if (target) { e.preventDefault(); target.click(); }
+        return;
+      }
+      // ⌘= / ⌘+ → zoom in. (= is the unshifted key; + is shift+=.)
+      if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        setZoom(readZoom() + ZOOM_STEP);
+        return;
+      }
+      // ⌘- / ⌘_ → zoom out.
+      if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        setZoom(readZoom() - ZOOM_STEP);
+        return;
+      }
+      // ⌘0 → reset to 100%.
+      if (e.key === '0') {
+        e.preventDefault();
+        setZoom(1);
+        return;
+      }
+    }
+
+    // Suppress the macOS "no handler" beep on stray character keys outside
+    // inputs (typing letters/numbers/punctuation when nothing wants them).
+    // We intentionally leave Tab, Space, arrow keys, function keys, etc.
+    // alone so their normal browser behavior (focus moves, page scrolls)
+    // still works.
+    if (!isPassThroughKey(e) && e.key.length === 1 && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
     }
   });
 
@@ -710,8 +907,61 @@
   const pickWorkspaceBtn = document.getElementById('pick-workspace-btn');
   if (pickWorkspaceBtn) pickWorkspaceBtn.addEventListener('click', () => runMenuAction('/api/pick-workspace', 'Pick workspace'));
 
+  // The "Use external data file…" menu item first opens an explainer modal,
+  // then lets the user trigger the native file picker from there.
+  function tildify(p) {
+    if (!p) return '';
+    return String(p).replace(/^\/Users\/[^/]+/, '~');
+  }
+  function dataFileModalHTML() {
+    const path = tildify(window.MEMORY_MAP_DATA_FILE || '');
+    const isOverride = !!window.MEMORY_MAP_DATA_FILE_IS_OVERRIDE;
+    return (
+      '<h2>Use an external data file</h2>' +
+      '<p>By default, Memory Map reads <code>~/Library/Application Support/MemoryMap/memory-map.json</code> — built from your local <code>~/.claude/</code> setup whenever <code>build.py</code> runs.</p>' +
+      '<p>Pointing at an <strong>external</strong> data file lets you view someone else\'s setup (e.g. a teammate exported their own <code>memory-map.json</code> for you to inspect), or pin to a snapshot for archival.</p>' +
+      '<p class="muted">While an external file is set, the ↻ Regenerate button still rebuilds <em>your own</em> default file but the viewer keeps showing the external one. Use "Reset to defaults" in this menu to switch back.</p>' +
+      '<div class="data-file-row">' +
+        '<button class="modal-cta" id="pick-data-now">Choose file…</button>' +
+        '<span class="data-file-path" id="data-file-path" title="' + esc(window.MEMORY_MAP_DATA_FILE || '') + '">' +
+          esc(path) +
+        '</span>' +
+      '</div>' +
+      (isOverride ? '<p class="modal-meta">Currently overriding the default.</p>' : '<p class="modal-meta">Currently using the default.</p>')
+    );
+  }
   const pickDataBtn = document.getElementById('pick-data-btn');
-  if (pickDataBtn) pickDataBtn.addEventListener('click', () => runMenuAction('/api/pick-data-file', 'Pick data file'));
+  if (pickDataBtn) pickDataBtn.addEventListener('click', () => {
+    settingsMenu.classList.remove('open');
+    openModal(dataFileModalHTML());
+    const trigger = document.getElementById('pick-data-now');
+    if (trigger) trigger.addEventListener('click', async () => {
+      trigger.disabled = true;
+      trigger.textContent = 'Picking…';
+      try {
+        const res = await fetch('/api/pick-data-file', { method: 'POST' });
+        const body = await res.json();
+        if (body.cancelled) {
+          trigger.disabled = false;
+          trigger.textContent = 'Choose file…';
+          return;
+        }
+        if (body.ok) {
+          // Successful pick → server rebuilt + config updated; reload so the
+          // viewer reads from the new file.
+          location.reload();
+        } else {
+          trigger.disabled = false;
+          trigger.textContent = 'Choose file…';
+          toast('Pick data file failed: ' + (body.stderr || 'unknown').slice(0, 400), true);
+        }
+      } catch (err) {
+        trigger.disabled = false;
+        trigger.textContent = 'Choose file…';
+        toast('Pick data file request failed: ' + err.message, true);
+      }
+    });
+  });
 
   const resetBtn = document.getElementById('reset-config-btn');
   if (resetBtn) resetBtn.addEventListener('click', () => runMenuAction('/api/reset-config', 'Reset'));
@@ -721,23 +971,69 @@
   const modalBody = document.getElementById('modal-body');
   const modalClose = document.getElementById('modal-close');
 
-  function openModal(html) {
-    modalBody.innerHTML = html;
-    modalBackdrop.hidden = false;
-    // Wire any copy buttons inside the modal.
-    modalBody.querySelectorAll('.copy[data-copy-target]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const sel = btn.getAttribute('data-copy-target');
-        const el = modalBody.querySelector(sel);
-        if (!el) return;
+  const codeExpandIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6 L8 10 L12 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const codeCollapseIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10 L8 6 L12 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const codeCopyIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3 11V4a1 1 0 011-1h7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  const codeCheckIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 L6.5 11.5 L12.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function wireCodeBlocks(root) {
+    root.querySelectorAll('.code-block').forEach(block => {
+      const toggle = block.querySelector('.code-action.toggle');
+      const copy = block.querySelector('.code-action.copy');
+      const pre = block.querySelector('.code-content');
+      function setExpanded(state) {
+        block.classList.toggle('expanded', state);
+        if (toggle) {
+          toggle.innerHTML = state ? codeCollapseIcon : codeExpandIcon;
+          toggle.title = state ? 'Collapse' : 'Expand';
+          toggle.setAttribute('aria-label', state ? 'Collapse' : 'Expand');
+        }
+      }
+      block.addEventListener('click', e => {
+        if (e.target.closest('.code-action')) return;
+        if (block.classList.contains('expanded')) return;
+        setExpanded(true);
+      });
+      if (toggle) toggle.addEventListener('click', e => {
+        e.stopPropagation();
+        setExpanded(!block.classList.contains('expanded'));
+      });
+      if (copy && pre) copy.addEventListener('click', async e => {
+        e.stopPropagation();
         try {
-          await navigator.clipboard.writeText(el.textContent);
-          const orig = btn.textContent;
-          btn.textContent = 'Copied ✓';
-          setTimeout(() => { btn.textContent = orig; }, 1500);
+          await navigator.clipboard.writeText(pre.textContent);
+          const origTitle = copy.getAttribute('title');
+          copy.classList.add('flash');
+          copy.setAttribute('title', 'Copied ✓');
+          setTimeout(() => {
+            copy.classList.remove('flash');
+            copy.setAttribute('title', origTitle);
+          }, 1400);
         } catch (e) {}
       });
     });
+  }
+
+  function codeBlockHTML(snippet) {
+    return (
+      '<div class="code-block" role="region" aria-label="Code snippet" tabindex="0">' +
+        '<div class="code-actions">' +
+          '<button type="button" class="code-action toggle" title="Expand" aria-label="Expand">' + codeExpandIcon + '</button>' +
+          '<button type="button" class="code-action copy" title="Copy" aria-label="Copy">' +
+            '<span class="icon icon-default">' + codeCopyIcon + '</span>' +
+            '<span class="icon icon-success">' + codeCheckIcon + '</span>' +
+          '</button>' +
+        '</div>' +
+        '<pre class="code-content">' + esc(snippet) + '</pre>' +
+        '<div class="code-fade"></div>' +
+      '</div>'
+    );
+  }
+
+  function openModal(html) {
+    modalBody.innerHTML = html;
+    modalBackdrop.hidden = false;
+    wireCodeBlocks(modalBody);
   }
   function closeModal() {
     modalBackdrop.hidden = true;
@@ -770,6 +1066,28 @@
     );
   });
 
+  const shortcutsBtn = document.getElementById('shortcuts-btn');
+  if (shortcutsBtn) shortcutsBtn.addEventListener('click', () => {
+    settingsMenu.classList.remove('open');
+    openModal(
+      '<h2>Keyboard shortcuts</h2>' +
+      '<ul class="shortcuts">' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>F</kbd></span></span><span>Find in the current file</span></li>' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>[</kbd></span><span class="sep">/</span><span class="keys"><kbd>⌘</kbd> <kbd>]</kbd></span></span><span>Back / forward</span></li>' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>N</kbd></span></span><span>New window</span></li>' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>W</kbd></span></span><span>Close window</span></li>' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>R</kbd></span></span><span>Reload the page</span></li>' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>1</kbd></span><span class="sep">–</span><span class="keys"><kbd>⌘</kbd> <kbd>5</kbd></span></span><span>Switch between tabs</span></li>' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>↑</kbd></span><span class="sep">/</span><span class="keys"><kbd>↓</kbd></span></span><span>Move through items in the directory</span></li>' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>↵</kbd></span><span class="sep">/</span><span class="keys"><kbd>Space</kbd></span></span><span>Open file or expand/collapse group</span></li>' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>+</kbd></span><span class="sep">/</span><span class="keys"><kbd>⌘</kbd> <kbd>-</kbd></span></span><span>Zoom in / out</span></li>' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>0</kbd></span></span><span>Reset zoom</span></li>' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>click</kbd></span></span><span>Pop file into new window</span></li>' +
+        '<li><span class="shortcut-keys"><span class="keys"><kbd>Esc</kbd></span></span><span>Close find bar / modal, or exit focus mode</span></li>' +
+      '</ul>'
+    );
+  });
+
   const hooksBtn = document.getElementById('hooks-btn');
   if (hooksBtn) hooksBtn.addEventListener('click', () => {
     settingsMenu.classList.remove('open');
@@ -777,7 +1095,7 @@
     openModal(
       '<h2>Suggested hooks</h2>' +
       '<p>Add these to <code>~/.claude/settings.json</code> under the top-level <code>"hooks"</code> key so Memory Map rebuilds its index whenever you start a Claude Code session, edit a plan, or exit plan mode.</p>' +
-      '<div class="snippet"><button class="copy" data-copy-target="#hooks-snippet">Copy</button><span id="hooks-snippet">' + esc(snippet) + '</span></div>' +
+      codeBlockHTML(snippet) +
       '<p class="muted">Without these hooks you can still rebuild manually from this Settings menu. Memory Map also auto-rebuilds on every version update.</p>'
     );
   });

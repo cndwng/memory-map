@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<style>
+  html { background: #fafaf7; }
+  @media (prefers-color-scheme: dark) { html { background: #161613; } }
+</style>
 <title>Memory Map — Welcome</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <style>/*__CSS__*/</style>
@@ -17,8 +22,8 @@
   }
   .welcome {
     max-width: 680px;
-    margin: 56px auto 80px;
-    padding: 0 32px;
+    margin: 56px auto;
+    padding: 0 32px 96px;
   }
   .welcome .hero {
     margin-bottom: 32px;
@@ -59,11 +64,24 @@
     padding: 1px 5px;
     border-radius: 3px;
   }
+  .welcome .workspace-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+  }
   .welcome .current-workspace {
-    display: inline-block;
     font: 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
     color: var(--muted);
-    margin-right: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+  }
+  /* Space between the hooks code block and the "without these hooks" caption. */
+  .welcome .code-block + p.muted {
+    margin-top: 14px;
   }
   .welcome button.cta {
     background: var(--ink);
@@ -84,30 +102,6 @@
   .welcome button.cta.secondary:hover {
     border-color: var(--ink);
   }
-  .welcome .snippet {
-    position: relative;
-    background: #1b1b18;
-    color: #f0ede2;
-    padding: 14px 16px;
-    border-radius: 6px;
-    font: 12px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
-    overflow-x: auto;
-    white-space: pre;
-    margin: 8px 0;
-  }
-  .welcome .snippet .copy {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    background: rgba(255,255,255,0.1);
-    color: #f0ede2;
-    border: none;
-    border-radius: 4px;
-    padding: 4px 9px;
-    font: 11px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
-    cursor: pointer;
-  }
-  .welcome .snippet .copy:hover { background: rgba(255,255,255,0.18); }
   .welcome .footer {
     display: flex;
     align-items: center;
@@ -130,6 +124,7 @@
     font-size: 13px;
     line-height: 1.55;
   }
+  /* Shortcuts list styles live in styles.css now (shared with modal). */
 </style>
 </head>
 <body>
@@ -146,18 +141,98 @@
   </section>
 
   <section>
+    <h2>Tip: use it for any markdown</h2>
+    <p>Memory Map can also open any <code>.md</code> file — works well as your default markdown viewer.</p>
+    <p class="muted">To set as default: in Finder, right-click any <code>.md</code> file → Get Info → Open With → Memory Map → Change All. Double-clicking any markdown anywhere on your machine will then open it in a focus-mode window.</p>
+  </section>
+
+  <section>
+    <h2>Keyboard shortcuts</h2>
+    <ul class="shortcuts">
+      <li>
+        <span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>F</kbd></span></span>
+        <span>Find in the current file</span>
+      </li>
+      <li>
+        <span class="shortcut-keys">
+          <span class="keys"><kbd>⌘</kbd> <kbd>[</kbd></span>
+          <span class="sep">/</span>
+          <span class="keys"><kbd>⌘</kbd> <kbd>]</kbd></span>
+        </span>
+        <span>Back / forward</span>
+      </li>
+      <li>
+        <span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>N</kbd></span></span>
+        <span>New window</span>
+      </li>
+      <li>
+        <span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>W</kbd></span></span>
+        <span>Close window</span>
+      </li>
+      <li>
+        <span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>R</kbd></span></span>
+        <span>Reload the page</span>
+      </li>
+      <li>
+        <span class="shortcut-keys">
+          <span class="keys"><kbd>⌘</kbd> <kbd>1</kbd></span>
+          <span class="sep">–</span>
+          <span class="keys"><kbd>⌘</kbd> <kbd>5</kbd></span>
+        </span>
+        <span>Switch between tabs</span>
+      </li>
+      <li>
+        <span class="shortcut-keys">
+          <span class="keys"><kbd>⌘</kbd> <kbd>+</kbd></span>
+          <span class="sep">/</span>
+          <span class="keys"><kbd>⌘</kbd> <kbd>-</kbd></span>
+        </span>
+        <span>Zoom in / out</span>
+      </li>
+      <li>
+        <span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>0</kbd></span></span>
+        <span>Reset zoom</span>
+      </li>
+      <li>
+        <span class="shortcut-keys"><span class="keys"><kbd>↵</kbd> <span class="sep">/</span> <kbd>Space</kbd></span></span>
+        <span>Open file or expand/collapse group</span>
+      </li>
+      <li>
+        <span class="shortcut-keys"><span class="keys"><kbd>⌘</kbd> <kbd>click</kbd></span></span>
+        <span>Pop file into new window</span>
+      </li>
+      <li>
+        <span class="shortcut-keys"><span class="keys"><kbd>Esc</kbd></span></span>
+        <span>Close find bar / modal, or exit focus mode</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
     <h2>Choose your workspace folder</h2>
     <p>The folder where you keep most of your code repos. Memory Map will look for any <code>&lt;repo&gt;/.claude/</code> folders inside it and surface their skills, agents, and commands under the <strong>Workspace</strong> tab.</p>
-    <p>
-      <span class="current-workspace" id="workspace-display">__WORKSPACE_DISPLAY__</span>
+    <div class="workspace-row">
       <button class="cta secondary" id="pick-workspace">Choose folder…</button>
-    </p>
+      <span class="current-workspace" id="workspace-display">__WORKSPACE_DISPLAY__</span>
+    </div>
   </section>
 
   <section>
     <h2>Keep it fresh automatically <span style="font-weight:400;color:var(--muted);font-size:13px;">— optional</span></h2>
     <p>Add these to <code>~/.claude/settings.json</code> under the top-level <code>"hooks"</code> key. They tell Claude Code to rebuild Memory Map's index whenever you start a session, edit a plan, or exit plan mode — so the tree always reflects your current setup.</p>
-    <div class="snippet"><button class="copy" id="copy-hooks">Copy</button><span id="hooks-snippet">__HOOKS_JSON__</span></div>
+    <div class="code-block" id="hooks-block" role="region" aria-label="Hooks snippet" tabindex="0">
+      <div class="code-actions">
+        <button type="button" class="code-action" id="toggle-hooks" title="Expand" aria-label="Expand">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6 L8 10 L12 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" class="code-action" id="copy-hooks" title="Copy" aria-label="Copy snippet">
+          <span class="icon icon-default"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3 11V4a1 1 0 011-1h7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+          <span class="icon icon-success"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 L6.5 11.5 L12.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+      </div>
+      <pre class="code-content" id="hooks-snippet">__HOOKS_JSON__</pre>
+      <div class="code-fade"></div>
+    </div>
     <p class="muted">Without these hooks you can still rebuild manually from the ⚙ Settings menu. Memory Map also auto-rebuilds on every version update.</p>
   </section>
 
@@ -169,6 +244,11 @@
 
 <script>
   (function() {
+    // Silence macOS's "no key handler" beep on Esc; nothing to close here.
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') e.preventDefault();
+    });
+
     const wsDisplay = document.getElementById('workspace-display');
     document.getElementById('pick-workspace').addEventListener('click', async () => {
       try {
@@ -182,15 +262,46 @@
       } catch (e) { /* swallow — user can retry */ }
     });
 
-    document.getElementById('copy-hooks').addEventListener('click', async () => {
-      const text = document.getElementById('hooks-snippet').textContent;
+    // Hooks code block — collapsed by default. Click block to expand;
+    // top-right buttons toggle/copy independently.
+    const block = document.getElementById('hooks-block');
+    const toggleBtn = document.getElementById('toggle-hooks');
+    const copyBtn = document.getElementById('copy-hooks');
+    const snippetEl = document.getElementById('hooks-snippet');
+
+    const expandIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6 L8 10 L12 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const collapseIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10 L8 6 L12 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const copyIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3 11V4a1 1 0 011-1h7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+    const checkIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 L6.5 11.5 L12.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    function setExpanded(state) {
+      block.classList.toggle('expanded', state);
+      toggleBtn.innerHTML = state ? collapseIcon : expandIcon;
+      toggleBtn.title = state ? 'Collapse' : 'Expand';
+      toggleBtn.setAttribute('aria-label', state ? 'Collapse' : 'Expand');
+    }
+
+    block.addEventListener('click', e => {
+      if (e.target.closest('.code-action')) return; // let the button handle
+      if (block.classList.contains('expanded')) return; // only click-to-expand
+      setExpanded(true);
+    });
+    toggleBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      setExpanded(!block.classList.contains('expanded'));
+    });
+    copyBtn.addEventListener('click', async e => {
+      e.stopPropagation();
       try {
-        await navigator.clipboard.writeText(text);
-        const btn = document.getElementById('copy-hooks');
-        const orig = btn.textContent;
-        btn.textContent = 'Copied ✓';
-        setTimeout(() => { btn.textContent = orig; }, 1500);
-      } catch (e) { /* swallow */ }
+        await navigator.clipboard.writeText(snippetEl.textContent);
+        const origTitle = copyBtn.getAttribute('title');
+        copyBtn.classList.add('flash');
+        copyBtn.setAttribute('title', 'Copied ✓');
+        setTimeout(() => {
+          copyBtn.classList.remove('flash');
+          copyBtn.setAttribute('title', origTitle);
+        }, 1400);
+      } catch (e) {}
     });
 
     document.getElementById('get-started').addEventListener('click', async () => {

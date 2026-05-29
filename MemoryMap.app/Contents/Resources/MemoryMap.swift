@@ -30,6 +30,9 @@ final class MemoryMapWindowController: NSWindowController, WKUIDelegate, WKScrip
         window.title = "Memory Map"
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = false
+        // Disable the macOS "Show Tab Bar" / window-tab merging UI — it
+        // doesn't make sense for our app and adds a useless View-menu item.
+        window.tabbingMode = .disallowed
         window.center()
         self.init(window: window)
         self.appDelegate = appDelegate
@@ -44,6 +47,16 @@ final class MemoryMapWindowController: NSWindowController, WKUIDelegate, WKScrip
 
         webView = WKWebView(frame: window.contentView!.bounds, configuration: config)
         webView.autoresizingMask = [.width, .height]
+        // Stop WKWebView from painting a stark white background before the
+        // page renders. We let the underlying NSWindow show through, which
+        // tracks the system appearance (dark in dark mode). Combined with
+        // template.html's <meta color-scheme> + html { background } rule,
+        // this kills the white flash on dark-mode launch.
+        webView.setValue(false, forKey: "drawsBackground")
+        window.backgroundColor = NSColor.windowBackgroundColor
+        // Two-finger pinch on trackpad to zoom — orthogonal to the CSS-zoom
+        // that ⌘+/⌘-/⌘0 drive in app.js.
+        webView.allowsMagnification = true
         webView.uiDelegate = self
         webView.navigationDelegate = self
         // Set a recognizable user agent fragment so the JS can detect WKWebView.
@@ -58,9 +71,43 @@ final class MemoryMapWindowController: NSWindowController, WKUIDelegate, WKScrip
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url {
-            appDelegate?.openPopupWindow(url: url)
+            // External links open in the user's default browser, not in a
+            // popup MemoryMap window.
+            if isExternalURL(url) {
+                NSWorkspace.shared.open(url)
+            } else {
+                appDelegate?.openPopupWindow(url: url)
+            }
         }
         return nil
+    }
+
+    // Intercept link clicks. Internal nav (localhost) stays in the webview;
+    // external (http/https to anywhere else) opens in the default browser.
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if navigationAction.navigationType == .linkActivated,
+           let url = navigationAction.request.url,
+           isExternalURL(url) {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    private func isExternalURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        if scheme == "http" || scheme == "https" {
+            // localhost / 127.0.0.1 is our own server — those stay internal.
+            if let host = url.host, host == "127.0.0.1" || host == "localhost" {
+                return false
+            }
+            return true
+        }
+        if scheme == "mailto" || scheme == "tel" { return true }
+        return false
     }
 
     // JS → Swift message bridge.
@@ -107,6 +154,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var mainWindowController: MemoryMapWindowController?
     var popupControllers: [MemoryMapWindowController] = []
     var viewerControllers: [MemoryMapWindowController] = []
+    // Set by application(_:open:) to cancel the deferred default-window open.
+    private var didOpenLaunchWindow = false
+    // Files that arrived before the server was ready; drained once port is set.
+    private var pendingFileOpens: [String] = []
 
     let bundlePath = Bundle.main.bundlePath  // .../MemoryMap.app
     var resourcesDir: String { bundlePath + "/Contents/Resources" }
@@ -123,17 +174,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // (the data shape can change between releases, so a stale JSON could
         // break the viewer). No-op on repeat launches of the same version.
         buildIfNeeded()
-        // Defer opening the main window — if we were launched with a file
-        // (.md double-click), `application(_:open:)` fires shortly and we want
-        // to skip the main window entirely.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            guard let self = self else { return }
-            if self.mainWindowController == nil
-                && self.popupControllers.isEmpty
-                && self.viewerControllers.isEmpty {
-                let path = self.welcomeCompleted() ? "/" : "/welcome"
-                self.openMainWindow(url: URL(string: "http://127.0.0.1:\(self.port!)\(path)")!)
-            }
+        // Defer the default-window open. If macOS is going to fire
+        // application(_:open:) with a file URL for a file-association launch,
+        // that handler will set didOpenLaunchWindow and we'll skip here.
+        // Otherwise (plain launch — Dock click, ⌘-space), this fires and opens
+        // the main app (or welcome on first run).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self = self, !self.didOpenLaunchWindow else { return }
+            guard let port = self.port else { return }
+            let path = self.welcomeCompleted() ? "/" : "/welcome"
+            self.openMainWindow(url: URL(string: "http://127.0.0.1:\(port)\(path)")!)
+            self.didOpenLaunchWindow = true
         }
     }
 
@@ -192,8 +243,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.isFileURL {
-            openViewerWindow(filePath: url.path)
+        handleFileURLs(urls.map { $0.path })
+    }
+
+    // Legacy single-file API. Implemented as a backup — some macOS versions /
+    // launch paths dispatch via this instead of the modern array-based one.
+    func application(_ sender: NSApplication, openFile filename: String) -> Bool {
+        handleFileURLs([filename])
+        return true
+    }
+
+    private func handleFileURLs(_ paths: [String]) {
+        // Cancel the deferred default-window open — we're handling the launch.
+        didOpenLaunchWindow = true
+        for path in paths {
+            openViewerWindow(filePath: path)
+        }
+        // First-time user landing via a .md double-click should still see the
+        // welcome — but BEHIND the file viewer, so the file they wanted to read
+        // is front-and-center.
+        if !welcomeCompleted(), mainWindowController == nil, let port = self.port {
+            openMainWindow(url: URL(string: "http://127.0.0.1:\(port)/welcome")!)
+            DispatchQueue.main.async { [weak self] in
+                self?.viewerControllers.last?.window?.makeKeyAndOrderFront(nil)
+            }
         }
     }
 
@@ -372,6 +445,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Drain the rest of stdout/stderr in the background so the pipes don't block.
         outPipe.fileHandleForReading.readabilityHandler = { handle in _ = handle.availableData }
         errPipe.fileHandleForReading.readabilityHandler = { handle in _ = handle.availableData }
+        // Any file opens that arrived before the port was ready.
+        drainPendingFileOpens()
     }
 
     // MARK: windows
@@ -400,7 +475,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func openViewerWindow(filePath: String) {
-        guard let port = self.port else { return }
+        // The Open Document AppleEvent can fire before startServer() finishes
+        // setting `port` (especially during the build-on-launch step). Queue
+        // and drain once the server is ready.
+        guard let port = self.port else {
+            pendingFileOpens.append(filePath)
+            return
+        }
         let encoded = filePath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         guard let url = URL(string: "http://127.0.0.1:\(port)/view?file=\(encoded)") else { return }
         let wc = MemoryMapWindowController(url: url, isPopup: true, appDelegate: self)
@@ -409,6 +490,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewerControllers.append(wc)
         wc.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func drainPendingFileOpens() {
+        guard !pendingFileOpens.isEmpty else { return }
+        let pending = pendingFileOpens
+        pendingFileOpens = []
+        for path in pending { openViewerWindow(filePath: path) }
     }
 
     // MARK: menu actions

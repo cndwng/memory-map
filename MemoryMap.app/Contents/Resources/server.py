@@ -165,12 +165,19 @@ def synthesize_html(focus=False):
     data_script = 'window.MEMORY_MAP_DATA = ' + data + ';'
     # Side-channel globals so the gear-menu "About" and "Suggested hooks"
     # modals can render without round-tripping to the server.
+    cfg_loaded = load_config()
     extras_script = (
         'window.MEMORY_MAP_VERSION = '
         + json.dumps(app_version() or '?')
         + ';\n'
         + 'window.MEMORY_MAP_HOOKS_SNIPPET = '
         + json.dumps(hooks_snippet_for_bundle())
+        + ';\n'
+        + 'window.MEMORY_MAP_DATA_FILE = '
+        + json.dumps(cfg_loaded.get('data_file') or DEFAULT_DATA_FILE)
+        + ';\n'
+        + 'window.MEMORY_MAP_DATA_FILE_IS_OVERRIDE = '
+        + ('true' if cfg_loaded.get('data_file') else 'false')
         + ';'
     )
     data_script = data_script + '\n' + extras_script

@@ -12,14 +12,27 @@
   --command: #10b981;
   --memory: #a855f7;
   --selected: #fff3d6;
+  /* Keyboard-focus ring color — muted enough to coexist with the warm
+     palette but distinct enough from text/border colors to read clearly. */
+  --focus-ring: #6366f1;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
+/* Page zoom — driven by ⌘+ / ⌘- / ⌘0 in app.js. The width/height compensation
+   keeps content filling the viewport regardless of zoom level. At zoom 0.9,
+   html's layout box is 1/0.9 ≈ 1.11× the viewport in CSS pixels; rendered
+   at 0.9× scale, that comes out to exactly viewport-sized. Same logic for
+   zoom > 1 — html's layout box shrinks, visual fills viewport, no overflow. */
+html {
+  zoom: var(--zoom, 1);
+  width: calc(100vw / var(--zoom, 1));
+  height: calc(100vh / var(--zoom, 1));
+}
 body {
   background: var(--bg); color: var(--ink);
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-  display: flex; flex-direction: column; height: 100vh;
+  display: flex; flex-direction: column; height: 100%;
 }
 
 header {
@@ -49,14 +62,36 @@ header h1 {
 .nav-btn:active:not(:disabled) { background: var(--line); }
 .nav-btn:disabled { color: var(--dim); opacity: 0.5; cursor: default; }
 
-/* Unified focus ring for keyboard navigation. */
-.nav-btn:focus-visible,
-.gear-btn:focus-visible,
-.chip:focus-visible,
-.tab:focus-visible,
-.action-btn:focus-visible {
-  outline: 2px solid var(--ink);
+/* Broad, softer focus ring — every interactive element gets one for free.
+   Uses the --focus-ring color (indigo) so it's distinct from the warm
+   palette and doesn't read as "danger" or "selected". */
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible,
+.row.leaf:focus-visible,
+.splitter:focus-visible {
+  outline: 1.5px solid var(--focus-ring);
   outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Code-block chips need a brighter ring against the dark background. */
+.code-block .code-action:focus-visible,
+.code-block:focus-visible {
+  outline: 1.5px solid #f0ede2;
+  outline-offset: 2px;
+}
+/* Tree rows (leaves + group summaries): same softer ring, pulled slightly
+   inside so it doesn't get clipped at pane edges, plus a background tint
+   so the focused row reads as highlighted regardless of theme. */
+.row.leaf:focus,
+summary.row:focus { outline: none; }
+.row.leaf:focus-visible,
+summary.row:focus-visible {
+  outline: 1.5px solid var(--focus-ring);
+  outline-offset: -1.5px;
+  border-radius: 3px;
+  background: var(--tag-bg);
 }
 .gear-btn:active { background: var(--line); }
 .search {
@@ -135,10 +170,102 @@ header h1 {
   margin: 4px 2px;
 }
 
+/* Slack-style collapsible code block. Shows first ~5 lines with a fade
+   at the bottom; click block to expand, action chips top-right for
+   copy + expand/collapse. */
+.code-block {
+  position: relative;
+  background: #1b1b18;
+  color: #f0ede2;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 8px 0;
+  cursor: pointer;
+}
+.code-block.expanded { cursor: default; }
+.code-block:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.code-block .code-content {
+  margin: 0;
+  padding: 14px 16px;
+  font: 12px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-height: 112px; /* ~5 lines */
+  transition: max-height 0.18s ease;
+}
+.code-block.expanded .code-content {
+  max-height: none;
+  overflow-y: visible;
+}
+.code-block .code-fade {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 48px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(27,27,24,0), rgba(27,27,24,1));
+  transition: opacity 0.15s ease;
+}
+.code-block.expanded .code-fade { opacity: 0; }
+.code-block .code-actions {
+  position: absolute;
+  top: 8px; right: 8px;
+  display: flex;
+  gap: 2px;
+  z-index: 1;
+}
+.code-block .code-action {
+  position: relative;
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  color: #f0ede2;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.28s ease, border-color 0.28s ease;
+}
+.code-block .code-action:hover {
+  background: rgba(255,255,255,0.16);
+  border-color: rgba(255,255,255,0.14);
+}
+.code-block .code-action svg { width: 14px; height: 14px; display: block; }
+/* Copy button has two icons stacked; crossfade between them on .flash. */
+.code-block .code-action .icon {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.22s ease,
+              transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.code-block .code-action .icon-success {
+  opacity: 0;
+  transform: scale(0.55);
+}
+.code-block .code-action.flash .icon-default {
+  opacity: 0;
+  transform: scale(0.55);
+}
+.code-block .code-action.flash .icon-success {
+  opacity: 1;
+  transform: scale(1);
+}
+/* Subtle neutral highlight on flash — no green, just brightens the chip. */
+.code-block .code-action.flash {
+  background: rgba(255,255,255,0.3);
+  border-color: rgba(255,255,255,0.38);
+}
+
 /* Modal overlay used by the gear menu's "About" and "Suggested hooks". */
 .modal-backdrop {
   position: fixed; inset: 0;
-  background: rgba(27,27,24,0.4);
+  background: rgba(0, 0, 0, 0.55);
   display: flex; align-items: center; justify-content: center;
   z-index: 200;
 }
@@ -205,6 +332,105 @@ header h1 {
   border-top: 1px solid var(--line);
   font: 11px/1.4 ui-monospace, Menlo, monospace;
   color: var(--dim);
+}
+.modal-body ul.shortcuts,
+.welcome ul.shortcuts {
+  list-style: none; padding: 0; margin: 8px 0 0;
+}
+.modal-body ul.shortcuts li,
+.welcome ul.shortcuts li {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) 1fr;
+  align-items: baseline;
+  gap: 16px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.modal-body ul.shortcuts li:last-child,
+.welcome ul.shortcuts li:last-child { border-bottom: none; }
+/* The left side of a shortcut row: one or more .keys blocks (each holds
+   one combo) separated by .sep marks that sit OUTSIDE the key blocks. */
+.modal-body ul.shortcuts .shortcut-keys,
+.welcome ul.shortcuts .shortcut-keys {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.modal-body ul.shortcuts .keys,
+.welcome ul.shortcuts .keys {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+.modal-body ul.shortcuts .sep,
+.welcome ul.shortcuts .sep {
+  color: var(--dim);
+}
+.modal-body ul.shortcuts kbd,
+.welcome ul.shortcuts kbd {
+  font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  background: var(--tag-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 6px;
+  color: var(--ink);
+  min-width: 22px;
+  text-align: center;
+}
+.modal-body ul.shortcuts li > span:last-child,
+.welcome ul.shortcuts li > span:last-child {
+  color: var(--muted);
+}
+.modal-body .modal-cta {
+  background: var(--ink);
+  color: var(--bg);
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  padding: 7px 14px;
+  font: 500 13px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+  cursor: pointer;
+}
+.modal-body .modal-cta:hover { opacity: 0.88; }
+.modal-body .modal-cta:disabled { opacity: 0.5; cursor: default; }
+/* Dark mode: a stark white-on-dark inversion is too loud. Use the tag-bg
+   tone with text in --ink for a calmer "primary" feel. Same goes for the
+   welcome page's main CTA. */
+@media (prefers-color-scheme: dark) {
+  .modal-body .modal-cta,
+  .welcome button.cta {
+    background: var(--tag-bg);
+    color: var(--ink);
+    border-color: var(--line);
+  }
+  .modal-body .modal-cta:hover,
+  .welcome button.cta:hover {
+    background: var(--line);
+    opacity: 1;
+  }
+}
+.modal-body .data-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0 16px;
+}
+.modal-body .data-file-path {
+  font: 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Truncate from the BEGINNING — the end of a path (basename) is more
+     informative than the start. direction:rtl + unicode-bidi keeps the
+     characters in their natural order while ellipsis-ing from the left. */
+  direction: rtl;
+  unicode-bidi: plaintext;
+  text-align: left;
+  min-width: 0;
+  flex: 1;
 }
 
 /* In-page find bar (⌘F) — floats over the top-right of the detail pane. */
@@ -414,11 +640,28 @@ details[open] > *:not(summary) {
 
 /* Nestable leaf: row is a <summary> that uses the native details toggle
    for anywhere outside .name. Click on .name still navigates (see app.js).
-   Extra column for the (N) count so the badge stays right-aligned. */
+   Flex layout so the (N) count hugs the name and the badge gets pushed
+   to the right by margin-left:auto. */
 .row.leaf.has-nested {
-  grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+  display: flex;
+  align-items: baseline;
+  grid-template-columns: none;
 }
-.nested-count { margin-left: 6px; }
+.row.leaf.has-nested .name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row.leaf.has-nested .nested-count {
+  flex: 0 0 auto;
+  margin-left: 6px;
+}
+.row.leaf.has-nested .badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
 .row.leaf.nested-doc .name { color: var(--muted); }
 .branch { color: var(--dim); white-space: pre; }
 .folder { color: var(--ink); }
@@ -438,6 +681,11 @@ details { display: block; }
   text-transform: uppercase;
   padding: 1px 5px; border-radius: 3px;
   font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+}
+/* Theme-adaptive badge (INDEX, GLOBAL) — dark in light mode, light in dark mode. */
+.badge.badge-ink {
+  background: var(--ink);
+  color: var(--bg);
 }
 .version, .hint {
   font-size: 10px; color: var(--dim);
@@ -618,6 +866,7 @@ body.is-popup .popout-btn { display: none; }
     --command: #34d399;
     --memory: #c084fc;
     --selected: #3a3320;
+    --focus-ring: #818cf8;
   }
   .chip { background: #2a2a26; color: var(--dim); }
   .markdown pre { background: #0e0e0c; color: #ece9de; }

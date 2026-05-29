@@ -3,6 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Tells the browser to honor system color preferences for the initial
+     paint (scrollbar, form controls, and a sensible body bg) before our
+     CSS loads. Kills the white flash on dark-mode launch. -->
+<meta name="color-scheme" content="light dark">
+<style>
+  /* Match the page's --bg variable at first paint so the body doesn't
+     flash white in dark mode. The full stylesheet immediately below
+     overrides this; this is just to color the initial blank canvas. */
+  html { background: #fafaf7; }
+  @media (prefers-color-scheme: dark) { html { background: #161613; } }
+</style>
 <title>Memory Map</title>
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon.png">
 <link rel="apple-touch-icon" sizes="512x512" href="/favicon.png">
@@ -42,6 +53,7 @@
         <button id="pick-data-btn" role="menuitem">📄 Use external data file…</button>
         <div class="menu-divider"></div>
         <button id="about-btn" role="menuitem">ℹ️ About Memory Map</button>
+        <button id="shortcuts-btn" role="menuitem">⌨️ Keyboard shortcuts</button>
         <button id="hooks-btn" role="menuitem">🪝 Suggested hooks</button>
         <div class="menu-divider"></div>
         <button id="reset-config-btn" role="menuitem" class="muted">↺ Reset to defaults</button>
