@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Memory Map — Welcome</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<style>/*__CSS__*/</style>
+<style>
+  /* Welcome-screen-specific layout. Built on the existing tokens (--bg,
+     --ink, --muted, etc.) for visual consistency with the main app. */
+  body {
+    display: block;
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+  .welcome {
+    max-width: 680px;
+    margin: 56px auto 80px;
+    padding: 0 32px;
+  }
+  .welcome .hero {
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .welcome h1 {
+    font: 600 26px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .welcome .subtitle {
+    color: var(--muted);
+    margin: 0;
+    font-size: 14px;
+  }
+  .welcome section {
+    margin-bottom: 28px;
+  }
+  .welcome section h2 {
+    font: 600 15px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+    margin: 0 0 8px;
+    letter-spacing: -0.005em;
+  }
+  .welcome section p {
+    margin: 0 0 8px;
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .welcome section p.muted {
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .welcome code {
+    font: 0.92em/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+    background: var(--tag-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .welcome .current-workspace {
+    display: inline-block;
+    font: 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--muted);
+    margin-right: 8px;
+  }
+  .welcome button.cta {
+    background: var(--ink);
+    color: var(--bg);
+    border: none;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font: 500 13px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+    cursor: pointer;
+  }
+  .welcome button.cta:hover { opacity: 0.85; }
+  .welcome button.cta.secondary {
+    background: var(--card);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    font-weight: 400;
+  }
+  .welcome button.cta.secondary:hover {
+    border-color: var(--ink);
+  }
+  .welcome .snippet {
+    position: relative;
+    background: #1b1b18;
+    color: #f0ede2;
+    padding: 14px 16px;
+    border-radius: 6px;
+    font: 12px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
+    overflow-x: auto;
+    white-space: pre;
+    margin: 8px 0;
+  }
+  .welcome .snippet .copy {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(255,255,255,0.1);
+    color: #f0ede2;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 9px;
+    font: 11px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+    cursor: pointer;
+  }
+  .welcome .snippet .copy:hover { background: rgba(255,255,255,0.18); }
+  .welcome .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 36px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+  .welcome .footer .meta {
+    color: var(--dim);
+    font-size: 11px;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .welcome ul {
+    margin: 0 0 8px;
+    padding-left: 22px;
+  }
+  .welcome ul li {
+    margin-bottom: 4px;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+</style>
+</head>
+<body>
+<div class="welcome">
+  <div class="hero">
+    <h1>Welcome to Memory Map</h1>
+    <p class="subtitle">A browser for everything in your Claude Code setup.</p>
+  </div>
+
+  <section>
+    <h2>What it does</h2>
+    <p>Memory Map indexes every skill, agent, slash command, memory file, plan, hook, and routine Claude has access to — across your global <code>~/.claude/</code> setup, your workspace repos, and installed plugins. Pick a tab, click a name, see the file rendered on the right.</p>
+    <p class="muted">Useful for: figuring out what skills are available, what your plugins ship, where your memories live, and what conventions you've set up over time.</p>
+  </section>
+
+  <section>
+    <h2>Choose your workspace folder</h2>
+    <p>The folder where you keep most of your code repos. Memory Map will look for any <code>&lt;repo&gt;/.claude/</code> folders inside it and surface their skills, agents, and commands under the <strong>Workspace</strong> tab.</p>
+    <p>
+      <span class="current-workspace" id="workspace-display">__WORKSPACE_DISPLAY__</span>
+      <button class="cta secondary" id="pick-workspace">Choose folder…</button>
+    </p>
+  </section>
+
+  <section>
+    <h2>Keep it fresh automatically <span style="font-weight:400;color:var(--muted);font-size:13px;">— optional</span></h2>
+    <p>Add these to <code>~/.claude/settings.json</code> under the top-level <code>"hooks"</code> key. They tell Claude Code to rebuild Memory Map's index whenever you start a session, edit a plan, or exit plan mode — so the tree always reflects your current setup.</p>
+    <div class="snippet"><button class="copy" id="copy-hooks">Copy</button><span id="hooks-snippet">__HOOKS_JSON__</span></div>
+    <p class="muted">Without these hooks you can still rebuild manually from the ⚙ Settings menu. Memory Map also auto-rebuilds on every version update.</p>
+  </section>
+
+  <div class="footer">
+    <span class="meta">v__VERSION__</span>
+    <button class="cta" id="get-started">Get started →</button>
+  </div>
+</div>
+
+<script>
+  (function() {
+    const wsDisplay = document.getElementById('workspace-display');
+    document.getElementById('pick-workspace').addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/pick-workspace', { method: 'POST' });
+        const body = await res.json();
+        if (body.cancelled) return;
+        if (body.ok && body.workspace_dir) {
+          const tilded = body.workspace_dir.replace(/^\/Users\/[^/]+/, '~');
+          wsDisplay.textContent = tilded;
+        }
+      } catch (e) { /* swallow — user can retry */ }
+    });
+
+    document.getElementById('copy-hooks').addEventListener('click', async () => {
+      const text = document.getElementById('hooks-snippet').textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        const btn = document.getElementById('copy-hooks');
+        const orig = btn.textContent;
+        btn.textContent = 'Copied ✓';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      } catch (e) { /* swallow */ }
+    });
+
+    document.getElementById('get-started').addEventListener('click', async () => {
+      try { await fetch('/api/complete-welcome', { method: 'POST' }); } catch (e) {}
+      window.location = '/';
+    });
+  })();
+</script>
+</body>
+</html>

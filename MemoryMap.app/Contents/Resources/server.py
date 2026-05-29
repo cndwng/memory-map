@@ -61,6 +61,72 @@ def active_data_file():
     return DEFAULT_DATA_FILE
 
 
+def app_version():
+    """Read CFBundleShortVersionString from Info.plist. RES_DIR is .../Resources;
+    Info.plist is one level up in .../Contents/Info.plist."""
+    plist = os.path.join(os.path.dirname(RES_DIR), 'Info.plist')
+    try:
+        with open(plist, 'r', encoding='utf-8') as f:
+            text = f.read()
+    except Exception:
+        return ''
+    # Cheap regex parse — avoids depending on plistlib for one field.
+    import re as _re
+    m = _re.search(
+        r'<key>\s*CFBundleShortVersionString\s*</key>\s*<string>\s*([^<]+?)\s*</string>',
+        text,
+    )
+    return m.group(1) if m else ''
+
+
+def hooks_snippet_for_bundle():
+    """The settings-snippet we recommend users paste into ~/.claude/settings.json.
+    Paths point at THIS .app's Resources scripts, so the snippet works no
+    matter where the user installs the .app."""
+    build_path = os.path.join(RES_DIR, 'build.py')
+    refresh_path = os.path.join(RES_DIR, 'refresh-on-plan.sh')
+    return json.dumps({
+        'hooks': {
+            'SessionStart': [{
+                'matcher': '',
+                'hooks': [{'type': 'command',
+                           'command': f'python3 {build_path} >/dev/null 2>&1 &'}],
+            }],
+            'PostToolUse': [{
+                'matcher': 'Write|Edit|ExitPlanMode',
+                'hooks': [{'type': 'command',
+                           'command': f'bash {refresh_path}'}],
+            }],
+        },
+    }, indent=2)
+
+
+def render_welcome():
+    """Render the first-launch welcome page. Uses the same CSS as the main
+    app so the visual language is shared."""
+    with open(os.path.join(RES_DIR, 'welcome.html'), 'r', encoding='utf-8') as f:
+        template = f.read()
+    with open(os.path.join(RES_DIR, 'styles.css'), 'r', encoding='utf-8') as f:
+        css = f.read()
+
+    cfg = load_config()
+    ws = (cfg.get('workspace_dirs') or [''])[0]
+    if ws:
+        home = os.path.expanduser('~')
+        ws_display = ws.replace(home, '~', 1) if ws.startswith(home) else ws
+    else:
+        ws_display = '(auto-detect — first existing of ~/workspace, ~/dev, ~/code, …)'
+
+    hooks_snippet = hooks_snippet_for_bundle()
+
+    out = template
+    out = out.replace('/*__CSS__*/', css)
+    out = out.replace('__WORKSPACE_DISPLAY__', html.escape(ws_display))
+    out = out.replace('__HOOKS_JSON__', html.escape(hooks_snippet))
+    out = out.replace('__VERSION__', html.escape(app_version() or '?'))
+    return out
+
+
 def synthesize_html(focus=False):
     """Combine template + assets + data into a single HTML string.
 
@@ -97,6 +163,17 @@ def synthesize_html(focus=False):
     # Also defang HTML comment delimiters inside the script.
     data = data.replace('<!--', '<\\!--').replace('-->', '--\\>')
     data_script = 'window.MEMORY_MAP_DATA = ' + data + ';'
+    # Side-channel globals so the gear-menu "About" and "Suggested hooks"
+    # modals can render without round-tripping to the server.
+    extras_script = (
+        'window.MEMORY_MAP_VERSION = '
+        + json.dumps(app_version() or '?')
+        + ';\n'
+        + 'window.MEMORY_MAP_HOOKS_SNIPPET = '
+        + json.dumps(hooks_snippet_for_bundle())
+        + ';'
+    )
+    data_script = data_script + '\n' + extras_script
 
     if data_error:
         # Bail out with a self-contained recovery page so the user is never
@@ -279,6 +356,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
             return
+        # First-launch welcome screen. Swift redirects here when the
+        # welcome-completed marker is missing.
+        if self.path == '/welcome' or self.path.startswith('/welcome?'):
+            try:
+                html = render_welcome()
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-Type', 'text/plain; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(f'Server error rendering welcome: {e}\n'.encode())
+                return
+            body = html.encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if self.path == '/' or self.path.startswith('/?') or self.path == '/index.html':
             # Pull focus flag from query string so the page renders pre-focused
             # (no animation flash on popup launch).
@@ -458,9 +555,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_header('Content-Length', str(len(payload)))
                 self.end_headers()
                 self.wfile.write(payload)
-        else:
-            self.send_response(404)
-            self.end_headers()
+            return
+        if self.path == '/api/complete-welcome':
+            # Write the marker file so subsequent launches skip the welcome
+            # screen. The Swift launcher checks this on every boot.
+            try:
+                os.makedirs(DATA_DIR, exist_ok=True)
+                marker = os.path.join(DATA_DIR, 'welcome-completed.txt')
+                with open(marker, 'w') as f:
+                    f.write('completed\n')
+                self._json({'ok': True})
+            except Exception as e:
+                self._json({'ok': False, 'stderr': f'{type(e).__name__}: {e}'}, status=500)
+            return
+        self.send_response(404)
+        self.end_headers()
 
 
 class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):

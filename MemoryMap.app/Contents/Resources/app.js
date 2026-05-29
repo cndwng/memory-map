@@ -428,16 +428,30 @@
 
   document.querySelectorAll('.row.leaf').forEach(r => {
     r.addEventListener('click', e => {
+      // A nestable summary uses the native <details> toggle for the row
+      // itself; only the name navigates. Anywhere else on the row falls
+      // through to the summary's default toggle + animated-close handler.
+      if (r.classList.contains('has-nested') && !e.target.closest('.name')) {
+        return;
+      }
       // cmd+click (macOS) or ctrl+click → open in a new focus-mode window
       if (e.metaKey || e.ctrlKey) {
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         openInPopup(r.dataset.path);
         return;
       }
-      e.stopPropagation();
+      // stopImmediatePropagation prevents the animated-close handler (also
+      // bound to summary) from collapsing the details on a name click.
+      e.preventDefault();
+      e.stopImmediatePropagation();
       navigate(r.dataset.path, { scroll: false });
     });
+  });
+
+  // Show the full name on hover when it's been ellipsis-truncated.
+  document.querySelectorAll('.row.leaf .name').forEach(n => {
+    if (n.scrollWidth > n.clientWidth + 1) n.title = n.textContent.trim();
   });
 
   // ---------- animated <details> close ----------
@@ -701,4 +715,70 @@
 
   const resetBtn = document.getElementById('reset-config-btn');
   if (resetBtn) resetBtn.addEventListener('click', () => runMenuAction('/api/reset-config', 'Reset'));
+
+  // ---------- About + Suggested hooks modals ----------
+  const modalBackdrop = document.getElementById('modal-backdrop');
+  const modalBody = document.getElementById('modal-body');
+  const modalClose = document.getElementById('modal-close');
+
+  function openModal(html) {
+    modalBody.innerHTML = html;
+    modalBackdrop.hidden = false;
+    // Wire any copy buttons inside the modal.
+    modalBody.querySelectorAll('.copy[data-copy-target]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const sel = btn.getAttribute('data-copy-target');
+        const el = modalBody.querySelector(sel);
+        if (!el) return;
+        try {
+          await navigator.clipboard.writeText(el.textContent);
+          const orig = btn.textContent;
+          btn.textContent = 'Copied ✓';
+          setTimeout(() => { btn.textContent = orig; }, 1500);
+        } catch (e) {}
+      });
+    });
+  }
+  function closeModal() {
+    modalBackdrop.hidden = true;
+    modalBody.innerHTML = '';
+  }
+  if (modalClose) modalClose.addEventListener('click', closeModal);
+  if (modalBackdrop) modalBackdrop.addEventListener('click', e => {
+    // Click on the dimmed backdrop (not the card) closes.
+    if (e.target === modalBackdrop) closeModal();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !modalBackdrop.hidden) closeModal();
+  });
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  const aboutBtn = document.getElementById('about-btn');
+  if (aboutBtn) aboutBtn.addEventListener('click', () => {
+    settingsMenu.classList.remove('open');
+    const v = window.MEMORY_MAP_VERSION || '?';
+    openModal(
+      '<h2>About Memory Map</h2>' +
+      '<p>Memory Map indexes every skill, agent, slash command, memory file, plan, hook, and routine Claude has access to — across your global <code>~/.claude/</code> setup, your workspace repos, and installed plugins. Pick a tab, click a name, see the file rendered on the right.</p>' +
+      '<p class="muted">Useful for: figuring out what skills are available, what your plugins ship, where your memories live, and what conventions you\'ve set up over time.</p>' +
+      '<div class="modal-meta">v' + esc(v) + '</div>'
+    );
+  });
+
+  const hooksBtn = document.getElementById('hooks-btn');
+  if (hooksBtn) hooksBtn.addEventListener('click', () => {
+    settingsMenu.classList.remove('open');
+    const snippet = window.MEMORY_MAP_HOOKS_SNIPPET || '';
+    openModal(
+      '<h2>Suggested hooks</h2>' +
+      '<p>Add these to <code>~/.claude/settings.json</code> under the top-level <code>"hooks"</code> key so Memory Map rebuilds its index whenever you start a Claude Code session, edit a plan, or exit plan mode.</p>' +
+      '<div class="snippet"><button class="copy" data-copy-target="#hooks-snippet">Copy</button><span id="hooks-snippet">' + esc(snippet) + '</span></div>' +
+      '<p class="muted">Without these hooks you can still rebuild manually from this Settings menu. Memory Map also auto-rebuilds on every version update.</p>'
+    );
+  });
 })();

@@ -41,6 +41,9 @@
         <button id="pick-workspace-btn" role="menuitem">📂 Choose workspace folder…</button>
         <button id="pick-data-btn" role="menuitem">📄 Use external data file…</button>
         <div class="menu-divider"></div>
+        <button id="about-btn" role="menuitem">ℹ️ About Memory Map</button>
+        <button id="hooks-btn" role="menuitem">🪝 Suggested hooks</button>
+        <div class="menu-divider"></div>
         <button id="reset-config-btn" role="menuitem" class="muted">↺ Reset to defaults</button>
       </div>
     </div>
@@ -67,6 +70,13 @@
     <div class="detail-empty">Select a file on the left to view it here.</div>
   </div>
 </main>
+
+<div id="modal-backdrop" class="modal-backdrop" hidden>
+  <div class="modal" id="modal-card" role="dialog" aria-modal="true">
+    <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
 
 <div id="find-bar" class="find-bar" hidden>
   <input type="search" id="find-input" class="find-input" placeholder="Find in page…" autocomplete="off">

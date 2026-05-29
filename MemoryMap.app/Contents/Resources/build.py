@@ -143,7 +143,57 @@ def parse_skill_like(path, name_from_filename=False):
         'content': strip_frontmatter(text),
         'triggers': triggers_from_desc(desc),
         'tools': parse_tools(fm),
+        'nested': [],
     }
+
+
+def read_text(path):
+    try:
+        return open(path).read()
+    except Exception:
+        return ''
+
+
+def find_skill_nested(skill_dir):
+    """Every .md under a skill dir except SKILL.md is a helper doc that
+    belongs to the skill. Walking the tree (not just one level) catches
+    `references/*.md` and any other subdir conventions plugins use."""
+    out = []
+    for f in sorted(glob.glob(f'{skill_dir}/**/*.md', recursive=True)):
+        if os.path.basename(f) == 'SKILL.md':
+            continue
+        rel = os.path.relpath(f, skill_dir)
+        out.append({
+            'name': rel,
+            'path': f,
+            'content': read_text(f),
+        })
+    return out
+
+
+def attribute_agent_refs(claude_dir, agents):
+    """`agents/references/` is a flat shared folder. Attribute each ref to
+    any agent whose body mentions the ref by basename. Returns the list of
+    unattributed refs (orphans) so the tree can still surface them."""
+    refs_dir = f'{claude_dir}/agents/references'
+    if not os.path.isdir(refs_dir):
+        return []
+    refs = []
+    for f in sorted(glob.glob(f'{refs_dir}/*.md')):
+        refs.append({
+            'name': os.path.relpath(f, f'{claude_dir}/agents'),
+            'path': f,
+            'content': read_text(f),
+        })
+    attributed = set()
+    for agent in agents:
+        body = agent.get('content', '')
+        for ref in refs:
+            stem = os.path.basename(ref['path']).rsplit('.md', 1)[0]
+            if stem in body:
+                agent['nested'].append(ref)
+                attributed.add(ref['path'])
+    return [r for r in refs if r['path'] not in attributed]
 
 
 MEM_PREFIXES = ('feedback_', 'reference_', 'user_')
@@ -190,19 +240,35 @@ def parse_memory(path):
 
 
 def collect_claude_dir(claude_dir):
-    items = {'skills': [], 'agents': [], 'commands': []}
+    items = {
+        'skills': [], 'agents': [], 'commands': [],
+        'agent_orphans': [], 'claude_md': None,
+    }
     for d in sorted(glob.glob(f'{claude_dir}/skills/*/SKILL.md')):
         x = parse_skill_like(d)
         if x:
+            x['nested'] = find_skill_nested(os.path.dirname(d))
             items['skills'].append(x)
     for f in sorted(glob.glob(f'{claude_dir}/agents/*.md')):
         x = parse_skill_like(f, name_from_filename=True)
         if x:
             items['agents'].append(x)
+    items['agent_orphans'] = attribute_agent_refs(claude_dir, items['agents'])
     for f in sorted(glob.glob(f'{claude_dir}/commands/*.md')):
         x = parse_skill_like(f, name_from_filename=True)
         if x:
             items['commands'].append(x)
+    claude_md_path = f'{claude_dir}/CLAUDE.md'
+    if os.path.isfile(claude_md_path):
+        items['claude_md'] = {
+            'name': 'CLAUDE.md',
+            'desc': 'Global instructions loaded into every session.',
+            'path': claude_md_path,
+            'content': read_text(claude_md_path),
+            'triggers': [],
+            'tools': [],
+            'nested': [],
+        }
     return items
 
 
@@ -338,24 +404,34 @@ def add_to_map(it):
         'triggers': it.get('triggers', []),
         'tools': it.get('tools', []),
     }
+    for nested in it.get('nested', []) or []:
+        file_map[nested['path']] = nested.get('content', '')
+        meta_map[nested['path']] = {
+            'desc': '', 'triggers': [], 'tools': [],
+        }
 
 
-for kind in ('skills', 'agents', 'commands'):
-    for it in inventory['global'][kind]:
-        add_to_map(it)
-for repo, items in inventory['workspace'].items():
+def add_collected_to_map(items):
     for kind in ('skills', 'agents', 'commands'):
         for it in items[kind]:
             add_to_map(it)
+    for orphan in items.get('agent_orphans', []) or []:
+        file_map[orphan['path']] = orphan.get('content', '')
+        meta_map[orphan['path']] = {'desc': '', 'triggers': [], 'tools': []}
+    if items.get('claude_md'):
+        add_to_map(items['claude_md'])
+
+
+add_collected_to_map(inventory['global'])
+for repo, items in inventory['workspace'].items():
+    add_collected_to_map(items)
 if inventory['memory']['index']:
     add_to_map(inventory['memory']['index'])
 for items in inventory['memory']['by_type'].values():
     for it in items:
         add_to_map(it)
 for meta in inventory['plugins'].values():
-    for kind in ('skills', 'agents', 'commands'):
-        for it in meta['items'][kind]:
-            add_to_map(it)
+    add_collected_to_map(meta['items'])
 
 
 def hook_synth_key(h, i):
@@ -454,24 +530,105 @@ MEMORY_TYPE_COLORS = {
 }
 
 
+DOC_BADGE_COLOR = '#94a3b8'
+
+
+def render_nested_row(nested, indent_prefix, is_last, parent_kind='doc'):
+    branch = '└─ ' if is_last else '├─ '
+    display = nested['name']
+    search_text = (display + ' ' + (nested.get('content', '') or '')[:200]).lower()
+    # Inherit the parent's data-kind so the chip filter keeps parent + children
+    # together — clicking "agents" still shows nested agent helper docs.
+    return (
+        f'<div class="row leaf nested-doc" data-kind="{parent_kind}" data-path="{esc(nested["path"])}" '
+        f'data-search="{esc(search_text)}">'
+        f'<span class="branch">{indent_prefix}{branch}</span>'
+        f'<span class="name clickable">{esc(display)}</span>'
+        f'<span class="badge" style="background:{DOC_BADGE_COLOR}">doc</span>'
+        f'</div>'
+    )
+
+
 def render_item_row(it, kind, indent_prefix, is_last, badge_color, badge_label, mtype=None):
     branch = '└─ ' if is_last else '├─ '
     display = (it['name'] + '/') if kind == 'skills' else os.path.basename(it['path'])
     data_kind = 'memory' if mtype else kind
     search_text = (it['name'] + ' ' + it.get('desc', '')).lower()
-    return (
-        f'<div class="row leaf" data-kind="{data_kind}" data-path="{esc(it["path"])}" '
-        f'data-search="{esc(search_text)}">'
+    nested = it.get('nested') or []
+    if not nested:
+        return (
+            f'<div class="row leaf" data-kind="{data_kind}" data-path="{esc(it["path"])}" '
+            f'data-search="{esc(search_text)}">'
+            f'<span class="branch">{indent_prefix}{branch}</span>'
+            f'<span class="name clickable">{esc(display)}</span>'
+            f'<span class="badge" style="background:{badge_color}">{badge_label}</span>'
+            f'</div>'
+        )
+    # With nested children: wrap row in <details>. Click on .name navigates
+    # to the parent's file; click anywhere else on the row toggles the
+    # native summary (same UX as the kindgroup folders). See app.js.
+    out = []
+    out.append('<details class="nestable" open>')
+    out.append(
+        f'<summary class="row leaf has-nested" data-kind="{data_kind}" '
+        f'data-path="{esc(it["path"])}" data-search="{esc(search_text)}">'
         f'<span class="branch">{indent_prefix}{branch}</span>'
         f'<span class="name clickable">{esc(display)}</span>'
+        f'<span class="hint nested-count">({len(nested)})</span>'
         f'<span class="badge" style="background:{badge_color}">{badge_label}</span>'
+        f'</summary>'
+    )
+    child_indent = indent_prefix + ('   ' if is_last else '│  ')
+    for i, n in enumerate(nested):
+        out.append(render_nested_row(n, child_indent, i == len(nested) - 1, parent_kind=data_kind))
+    out.append('</details>')
+    return '\n'.join(out)
+
+
+def render_claude_md_row(it, indent_prefix, is_last):
+    branch = '└─ ' if is_last else '├─ '
+    search_text = ('CLAUDE.md ' + (it.get('desc', '') or '')).lower()
+    return (
+        f'<div class="row leaf" data-kind="claudemd" data-path="{esc(it["path"])}" '
+        f'data-search="{esc(search_text)}">'
+        f'<span class="branch">{indent_prefix}{branch}</span>'
+        f'<span class="name clickable">CLAUDE.md</span>'
+        f'<span class="badge" style="background:#1b1b18">global</span>'
         f'</div>'
     )
+
+
+def render_agent_orphans(orphans, indent_prefix):
+    """Refs in `agents/references/` not attributed to any agent — show
+    flat under agents/ as a `references/` subfolder so they're not lost."""
+    if not orphans:
+        return ''
+    out = []
+    out.append(
+        f'<details class="kindgroup"><summary class="row group-row" data-kind="doc">'
+        f'<span class="branch">{indent_prefix}└─ </span>'
+        f'<span class="folder">references/</span> '
+        f'<span class="hint">({len(orphans)})</span></summary>'
+    )
+    child = indent_prefix + '   '
+    for i, r in enumerate(orphans):
+        out.append(render_nested_row(
+            {'name': os.path.basename(r['path']), 'path': r['path'], 'content': r.get('content', '')},
+            child,
+            i == len(orphans) - 1,
+            parent_kind='agents',
+        ))
+    out.append('</details>')
+    return '\n'.join(out)
 
 
 def render_group(items_by_kind, indent=''):
     out = []
     kinds_present = [k for k in ('skills', 'agents', 'commands') if items_by_kind.get(k)]
+    orphans = items_by_kind.get('agent_orphans') or []
+    if items_by_kind.get('claude_md'):
+        is_last_overall = not kinds_present
+        out.append(render_claude_md_row(items_by_kind['claude_md'], indent, is_last_overall))
     for kidx, kind in enumerate(kinds_present):
         is_last_kind = (kidx == len(kinds_present) - 1)
         kbr = '└─ ' if is_last_kind else '├─ '
@@ -485,7 +642,10 @@ def render_group(items_by_kind, indent=''):
         )
         child_prefix = indent + '   '
         for i, it in enumerate(items):
-            out.append(render_item_row(it, kind, child_prefix, i == len(items) - 1, color, label))
+            is_last_item = (i == len(items) - 1) and not (kind == 'agents' and orphans)
+            out.append(render_item_row(it, kind, child_prefix, is_last_item, color, label))
+        if kind == 'agents' and orphans:
+            out.append(render_agent_orphans(orphans, child_prefix))
         out.append('</details>')
     return '\n'.join(out)
 
@@ -495,7 +655,12 @@ def build_global_tree(inv):
     plans = inv['plans']
     kinds_present = [k for k in ('skills', 'agents', 'commands') if items_by_kind.get(k)]
     groups = list(kinds_present) + (['plans'] if plans else [])
+    orphans = items_by_kind.get('agent_orphans') or []
     out = ['<div class="row root"><span class="folder root-name">~/.claude/</span></div>']
+    # CLAUDE.md sits at the root, ahead of skills/agents/commands.
+    if items_by_kind.get('claude_md'):
+        no_groups = not groups
+        out.append(render_claude_md_row(items_by_kind['claude_md'], '', no_groups))
     for gidx, group in enumerate(groups):
         is_last = (gidx == len(groups) - 1)
         gbr = '└─ ' if is_last else '├─ '
@@ -551,7 +716,10 @@ def build_global_tree(inv):
                 f'<span class="hint">({len(items)})</span></summary>'
             )
             for i, it in enumerate(items):
-                out.append(render_item_row(it, kind, '   ', i == len(items) - 1, color, label))
+                is_last_item = (i == len(items) - 1) and not (kind == 'agents' and orphans)
+                out.append(render_item_row(it, kind, '   ', is_last_item, color, label))
+            if kind == 'agents' and orphans:
+                out.append(render_agent_orphans(orphans, '   '))
             out.append('</details>')
     return '\n'.join(out)
 
@@ -741,9 +909,17 @@ trees = {
 
 # ---------- counts ----------
 
-n_global = sum(len(v) for v in inventory['global'].values())
-n_workspace = sum(sum(len(v) for v in items.values()) for items in inventory['workspace'].values())
-n_plugins = sum(sum(len(v) for v in m['items'].values()) for m in inventory['plugins'].values())
+def _count_items(items):
+    n = sum(len(items.get(k, [])) for k in ('skills', 'agents', 'commands'))
+    n += len(items.get('agent_orphans') or [])
+    if items.get('claude_md'):
+        n += 1
+    return n
+
+
+n_global = _count_items(inventory['global'])
+n_workspace = sum(_count_items(items) for items in inventory['workspace'].values())
+n_plugins = sum(_count_items(m['items']) for m in inventory['plugins'].values())
 n_memory = sum(len(v) for v in inventory['memory']['by_type'].values()) + (1 if inventory['memory']['index'] else 0)
 n_automations = len(inventory['automations']['hooks']) + len(inventory['automations']['routines'])
 n_plans = len(inventory['plans'])

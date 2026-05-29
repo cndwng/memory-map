@@ -119,6 +119,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showFatalAlert("Memory Map: server failed to start. Check ~/Library/Application Support/MemoryMap/server.log.")
             return
         }
+        // Rebuild the data file if this is a fresh install or a new version
+        // (the data shape can change between releases, so a stale JSON could
+        // break the viewer). No-op on repeat launches of the same version.
+        buildIfNeeded()
         // Defer opening the main window — if we were launched with a file
         // (.md double-click), `application(_:open:)` fires shortly and we want
         // to skip the main window entirely.
@@ -127,8 +131,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if self.mainWindowController == nil
                 && self.popupControllers.isEmpty
                 && self.viewerControllers.isEmpty {
-                self.openMainWindow(url: URL(string: "http://127.0.0.1:\(self.port!)/")!)
+                let path = self.welcomeCompleted() ? "/" : "/welcome"
+                self.openMainWindow(url: URL(string: "http://127.0.0.1:\(self.port!)\(path)")!)
             }
+        }
+    }
+
+    // MARK: first-launch + version tracking
+
+    private var dataDir: String {
+        ("~/Library/Application Support/MemoryMap" as NSString).expandingTildeInPath
+    }
+
+    private func currentVersion() -> String {
+        return Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+    }
+
+    private func lastBuiltVersion() -> String? {
+        let path = (dataDir as NSString).appendingPathComponent("last-built-version.txt")
+        guard let s = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func writeLastBuiltVersion(_ v: String) {
+        try? FileManager.default.createDirectory(atPath: dataDir,
+                                                 withIntermediateDirectories: true)
+        let path = (dataDir as NSString).appendingPathComponent("last-built-version.txt")
+        try? v.write(toFile: path, atomically: true, encoding: .utf8)
+    }
+
+    private func welcomeCompleted() -> Bool {
+        let path = (dataDir as NSString).appendingPathComponent("welcome-completed.txt")
+        return FileManager.default.fileExists(atPath: path)
+    }
+
+    private func buildIfNeeded() {
+        let dataFile = (dataDir as NSString).appendingPathComponent("memory-map.json")
+        let dataMissing = !FileManager.default.fileExists(atPath: dataFile)
+        let cur = currentVersion()
+        let last = lastBuiltVersion()
+        if !dataMissing && cur == last {
+            return  // Same version, data exists → trust it.
+        }
+        try? FileManager.default.createDirectory(atPath: dataDir,
+                                                 withIntermediateDirectories: true)
+        // Synchronous build. Typically <1 second on a normal ~/.claude setup.
+        let buildScript = (resourcesDir as NSString).appendingPathComponent("build.py")
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        proc.arguments = ["python3", buildScript]
+        proc.standardOutput = Pipe()
+        proc.standardError = Pipe()
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+            writeLastBuiltVersion(cur)
+        } catch {
+            NSLog("Memory Map: build on launch failed: \(error)")
         }
     }
 
