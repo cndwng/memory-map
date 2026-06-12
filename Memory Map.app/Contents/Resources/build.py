@@ -171,29 +171,26 @@ def find_skill_nested(skill_dir):
     return out
 
 
-def attribute_agent_refs(claude_dir, agents):
-    """`agents/references/` is a flat shared folder. Attribute each ref to
-    any agent whose body mentions the ref by basename. Returns the list of
-    unattributed refs (orphans) so the tree can still surface them."""
+def collect_agent_refs(claude_dir, agents):
+    """`agents/references/` is a flat shared folder — every ref is reachable
+    from every agent in the group. Returns all refs as a single shared list
+    (rendered as one `references/` subfolder under `agents/`), and tags each
+    ref with the agents that mention it by basename so the detail header can
+    show a 'used by' hint instead of duplicating the file in the tree."""
     refs_dir = f'{claude_dir}/agents/references'
     if not os.path.isdir(refs_dir):
         return []
     refs = []
     for f in sorted(glob.glob(f'{refs_dir}/*.md')):
+        stem = os.path.basename(f).rsplit('.md', 1)[0]
+        used_by = [a['name'] for a in agents if stem in a.get('content', '')]
         refs.append({
             'name': os.path.relpath(f, f'{claude_dir}/agents'),
             'path': f,
             'content': read_text(f),
+            'used_by': used_by,
         })
-    attributed = set()
-    for agent in agents:
-        body = agent.get('content', '')
-        for ref in refs:
-            stem = os.path.basename(ref['path']).rsplit('.md', 1)[0]
-            if stem in body:
-                agent['nested'].append(ref)
-                attributed.add(ref['path'])
-    return [r for r in refs if r['path'] not in attributed]
+    return refs
 
 
 MEM_PREFIXES = ('feedback_', 'reference_', 'user_')
@@ -239,10 +236,33 @@ def parse_memory(path):
     }
 
 
-def collect_claude_dir(claude_dir):
+def parse_loose_md(path):
+    """Lighter parser for .md/.mdc files outside the structured kinds
+    (skills/agents/commands). No frontmatter required — used for arbitrary
+    workspace .claude/ subdirs like `rules/`, `prompts/`."""
+    fm, text = parse_frontmatter(path)
+    if fm is not None:
+        desc = get_field(fm, 'description') or ''
+        body = strip_frontmatter(text)
+    else:
+        desc = ''
+        body = text
+    return {
+        'name': os.path.basename(path),
+        'desc': desc,
+        'path': path,
+        'content': body,
+        'triggers': triggers_from_desc(desc),
+        'tools': [],
+        'nested': [],
+    }
+
+
+def collect_claude_dir(claude_dir, include_extras=False):
     items = {
         'skills': [], 'agents': [], 'commands': [],
-        'agent_orphans': [], 'claude_md': None,
+        'agent_refs': [], 'claude_md': None,
+        'extras': {},
     }
     for d in sorted(glob.glob(f'{claude_dir}/skills/*/SKILL.md')):
         x = parse_skill_like(d)
@@ -253,7 +273,7 @@ def collect_claude_dir(claude_dir):
         x = parse_skill_like(f, name_from_filename=True)
         if x:
             items['agents'].append(x)
-    items['agent_orphans'] = attribute_agent_refs(claude_dir, items['agents'])
+    items['agent_refs'] = collect_agent_refs(claude_dir, items['agents'])
     for f in sorted(glob.glob(f'{claude_dir}/commands/*.md')):
         x = parse_skill_like(f, name_from_filename=True)
         if x:
@@ -269,6 +289,24 @@ def collect_claude_dir(claude_dir):
             'tools': [],
             'nested': [],
         }
+    # Pick up any other subdirs (e.g. `rules/`, `prompts/`) so they're not
+    # invisible just because they don't follow the skill/agent/command
+    # convention. Only enabled for workspace repos — global ~/.claude/'s
+    # extra dirs (projects, todos, shell-snapshots, …) are Claude-Code
+    # internals we don't want surfaced.
+    if include_extras and os.path.isdir(claude_dir):
+        known = {'skills', 'agents', 'commands'}
+        for entry in sorted(os.listdir(claude_dir)):
+            sub = f'{claude_dir}/{entry}'
+            if not os.path.isdir(sub) or entry in known or entry.startswith('.'):
+                continue
+            paths = sorted(
+                glob.glob(f'{sub}/**/*.md', recursive=True)
+                + glob.glob(f'{sub}/**/*.mdc', recursive=True)
+            )
+            found = [parse_loose_md(p) for p in paths]
+            if found:
+                items['extras'][entry] = found
     return items
 
 
@@ -284,7 +322,7 @@ inventory['global'] = collect_claude_dir(f'{HOME}/.claude')
 for ws_root in WORKSPACE_DIRS:
     for ws_dir in sorted(glob.glob(f'{ws_root}/*/')):
         repo = os.path.basename(ws_dir.rstrip('/'))
-        items = collect_claude_dir(f'{ws_dir}.claude')
+        items = collect_claude_dir(f'{ws_dir}.claude', include_extras=True)
         if any(items.values()):
             # If multiple workspace roots have a repo of the same name, the last
             # one wins. Not common enough to fuss about.
@@ -385,7 +423,7 @@ if os.path.isfile(plugins_meta):
             if p in seen or not os.path.isdir(p):
                 continue
             seen.add(p)
-            items = collect_claude_dir(p)
+            items = collect_claude_dir(p, include_extras=True)
             if any(items.values()):
                 inventory['plugins'][plugin_key] = {
                     'path': p, 'items': items, 'version': e.get('version', ''),
@@ -415,11 +453,17 @@ def add_collected_to_map(items):
     for kind in ('skills', 'agents', 'commands'):
         for it in items[kind]:
             add_to_map(it)
-    for orphan in items.get('agent_orphans', []) or []:
-        file_map[orphan['path']] = orphan.get('content', '')
-        meta_map[orphan['path']] = {'desc': '', 'triggers': [], 'tools': []}
+    for ref in items.get('agent_refs', []) or []:
+        file_map[ref['path']] = ref.get('content', '')
+        meta_map[ref['path']] = {
+            'desc': '', 'triggers': [], 'tools': [],
+            'used_by': ref.get('used_by', []),
+        }
     if items.get('claude_md'):
         add_to_map(items['claude_md'])
+    for extras_items in (items.get('extras') or {}).values():
+        for it in extras_items:
+            add_to_map(it)
 
 
 add_collected_to_map(inventory['global'])
@@ -643,39 +687,46 @@ def render_claude_md_row(it, indent_prefix, is_last):
     )
 
 
-def render_agent_orphans(orphans, indent_prefix):
-    """Refs in `agents/references/` not attributed to any agent — show
-    flat under agents/ as a `references/` subfolder so they're not lost."""
-    if not orphans:
+def render_agent_refs(refs, indent_prefix):
+    """`agents/references/` is shared across the group — render it as one
+    subfolder under agents/, never duplicated per-agent. The detail header
+    surfaces which agents actually use each ref."""
+    if not refs:
         return ''
     out = []
     out.append(
         f'<details class="kindgroup"><summary tabindex="-1" class="row group-row" data-kind="doc">'
         f'<span class="branch">{indent_prefix}└─ </span>'
         f'<span class="folder">references/</span> '
-        f'<span class="hint">({len(orphans)})</span></summary>'
+        f'<span class="hint">({len(refs)})</span></summary>'
     )
     child = indent_prefix + '   '
-    for i, r in enumerate(orphans):
+    for i, r in enumerate(refs):
         out.append(render_nested_row(
             {'name': os.path.basename(r['path']), 'path': r['path'], 'content': r.get('content', '')},
             child,
-            i == len(orphans) - 1,
+            i == len(refs) - 1,
             parent_kind='agents',
         ))
     out.append('</details>')
     return '\n'.join(out)
 
 
+EXTRAS_BADGE = ('other', '#94a3b8')
+
+
 def render_group(items_by_kind, indent=''):
     out = []
     kinds_present = [k for k in ('skills', 'agents', 'commands') if items_by_kind.get(k)]
-    orphans = items_by_kind.get('agent_orphans') or []
+    extras = items_by_kind.get('extras') or {}
+    extras_keys = sorted(extras.keys())
+    total_groups = len(kinds_present) + len(extras_keys)
+    agent_refs = items_by_kind.get('agent_refs') or []
     if items_by_kind.get('claude_md'):
-        is_last_overall = not kinds_present
+        is_last_overall = total_groups == 0
         out.append(render_claude_md_row(items_by_kind['claude_md'], indent, is_last_overall))
     for kidx, kind in enumerate(kinds_present):
-        is_last_kind = (kidx == len(kinds_present) - 1)
+        is_last_kind = (kidx == total_groups - 1)
         kbr = '└─ ' if is_last_kind else '├─ '
         label, color = KIND_BADGES[kind]
         items = items_by_kind[kind]
@@ -687,10 +738,29 @@ def render_group(items_by_kind, indent=''):
         )
         child_prefix = indent + '   '
         for i, it in enumerate(items):
-            is_last_item = (i == len(items) - 1) and not (kind == 'agents' and orphans)
+            is_last_item = (i == len(items) - 1) and not (kind == 'agents' and agent_refs)
             out.append(render_item_row(it, kind, child_prefix, is_last_item, color, label))
-        if kind == 'agents' and orphans:
-            out.append(render_agent_orphans(orphans, child_prefix))
+        if kind == 'agents' and agent_refs:
+            out.append(render_agent_refs(agent_refs, child_prefix))
+        out.append('</details>')
+    # Extra subdirs (rules/, prompts/, etc.) — anything in .claude/ that
+    # isn't a known kind. Rendered after the structured ones.
+    e_label, e_color = EXTRAS_BADGE
+    for eidx, ekey in enumerate(extras_keys):
+        overall_idx = len(kinds_present) + eidx
+        is_last_kind = (overall_idx == total_groups - 1)
+        kbr = '└─ ' if is_last_kind else '├─ '
+        items = extras[ekey]
+        out.append(
+            f'<details class="kindgroup" open><summary tabindex="-1" class="row group-row" '
+            f'data-kind="other"><span class="branch">{indent}{kbr}</span>'
+            f'<span class="folder">{esc(ekey)}/</span> '
+            f'<span class="hint">({len(items)})</span></summary>'
+        )
+        child_prefix = indent + '   '
+        for i, it in enumerate(items):
+            is_last_item = (i == len(items) - 1)
+            out.append(render_item_row(it, 'other', child_prefix, is_last_item, e_color, e_label))
         out.append('</details>')
     return '\n'.join(out)
 
@@ -700,7 +770,7 @@ def build_global_tree(inv):
     plans = inv['plans']
     kinds_present = [k for k in ('skills', 'agents', 'commands') if items_by_kind.get(k)]
     groups = list(kinds_present) + (['plans'] if plans else [])
-    orphans = items_by_kind.get('agent_orphans') or []
+    agent_refs = items_by_kind.get('agent_refs') or []
     out = ['<div class="row root"><span class="folder root-name">~/.claude/</span></div>']
     # CLAUDE.md sits at the root, ahead of skills/agents/commands.
     if items_by_kind.get('claude_md'):
@@ -761,10 +831,10 @@ def build_global_tree(inv):
                 f'<span class="hint">({len(items)})</span></summary>'
             )
             for i, it in enumerate(items):
-                is_last_item = (i == len(items) - 1) and not (kind == 'agents' and orphans)
+                is_last_item = (i == len(items) - 1) and not (kind == 'agents' and agent_refs)
                 out.append(render_item_row(it, kind, '   ', is_last_item, color, label))
-            if kind == 'agents' and orphans:
-                out.append(render_agent_orphans(orphans, '   '))
+            if kind == 'agents' and agent_refs:
+                out.append(render_agent_refs(agent_refs, '   '))
             out.append('</details>')
     return '\n'.join(out)
 
@@ -979,9 +1049,11 @@ trees = {
 
 def _count_items(items):
     n = sum(len(items.get(k, [])) for k in ('skills', 'agents', 'commands'))
-    n += len(items.get('agent_orphans') or [])
+    n += len(items.get('agent_refs') or [])
     if items.get('claude_md'):
         n += 1
+    for extras_items in (items.get('extras') or {}).values():
+        n += len(extras_items)
     return n
 
 
