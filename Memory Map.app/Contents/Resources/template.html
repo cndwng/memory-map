@@ -45,18 +45,48 @@
     <button class="chip" data-kind="routine" aria-pressed="false">routines</button>
     <button class="chip" data-kind="plan" aria-pressed="false">plans</button>
     <div class="settings-wrap">
-      <button class="gear-btn" id="gear-btn" title="Settings"><span class="gear-glyph">⚙</span></button>
+      <button class="gear-btn" id="gear-btn" title="Settings" aria-label="Settings">
+        <svg class="gear-glyph" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
       <div class="settings-menu" id="settings-menu" role="menu">
-        <button id="regen-btn" role="menuitem">↻ Regenerate directory</button>
+        <button id="regen-btn" role="menuitem">
+          <span class="menu-icon"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8a5.5 5.5 0 0 1 9.4-3.9M13.5 8a5.5 5.5 0 0 1-9.4 3.9"/><path d="M11.5 1.5v3h-3M4.5 14.5v-3h3"/></svg></span>
+          <span>Regenerate directory</span>
+        </button>
         <div class="menu-divider"></div>
-        <button id="pick-workspace-btn" role="menuitem">📂 Choose workspace folder…</button>
-        <button id="pick-data-btn" role="menuitem">📄 Use external data file…</button>
+        <button id="pick-workspace-btn" role="menuitem">
+          <span class="menu-icon"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></svg></span>
+          <span>Choose workspace folder…</span>
+        </button>
+        <button id="pick-data-btn" role="menuitem">
+          <span class="menu-icon"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h5l3 3V13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M9 2.5v3h3"/></svg></span>
+          <span>Use external data file…</span>
+        </button>
+        <button id="allow-tmp-btn" role="menuitem">
+          <span class="menu-icon"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/><path d="M8 7.5v3M6.5 9h3"/></svg></span>
+          <span>Allow files in /tmp…</span>
+        </button>
         <div class="menu-divider"></div>
-        <button id="about-btn" role="menuitem">ℹ️ About Memory Map</button>
-        <button id="shortcuts-btn" role="menuitem">⌨️ Keyboard shortcuts</button>
-        <button id="hooks-btn" role="menuitem">🪝 Suggested hooks</button>
+        <button id="about-btn" role="menuitem">
+          <span class="menu-icon"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 11V7.5M8 5v.5"/></svg></span>
+          <span>About Memory Map</span>
+        </button>
+        <button id="shortcuts-btn" role="menuitem">
+          <span class="menu-icon"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="4" width="13" height="8" rx="1.5"/><path d="M4 7h.01M7 7h.01M10 7h.01M13 7h.01M4 10h.01M7 10h2M11 10h.01"/></svg></span>
+          <span>Keyboard shortcuts</span>
+        </button>
+        <button id="hooks-btn" role="menuitem">
+          <span class="menu-icon"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2 4 9h3l-1 5 5-7H8z"/></svg></span>
+          <span>Suggested hooks</span>
+        </button>
         <div class="menu-divider"></div>
-        <button id="reset-config-btn" role="menuitem" class="muted">↺ Reset to defaults</button>
+        <button id="reset-config-btn" role="menuitem" class="muted">
+          <span class="menu-icon"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2v3h-3"/></svg></span>
+          <span>Reset to defaults</span>
+        </button>
       </div>
     </div>
   </div>

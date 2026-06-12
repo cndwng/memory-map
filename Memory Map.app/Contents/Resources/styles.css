@@ -129,7 +129,6 @@ summary.row:focus-visible {
   background: var(--tag-bg); border: none;
   width: 40px; height: 40px;
   border-radius: 50%;
-  font-size: 24px; line-height: 1;
   color: var(--muted);
   cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
@@ -137,8 +136,7 @@ summary.row:focus-visible {
 }
 .gear-btn:hover { background: var(--line); color: var(--ink); transform: rotate(20deg); }
 .gear-btn[aria-busy="true"] { opacity: 0.5; transform: rotate(360deg); transition: transform 0.6s; }
-/* Optical centering — the gear glyph sits low in its line box. */
-.gear-glyph { display: block; transform: translateY(-1px); }
+.gear-glyph { display: block; width: 18px; height: 18px; }
 .settings-menu {
   /* Positioned by JS (position: fixed so it escapes header overflow:hidden) */
   position: fixed;
@@ -153,10 +151,11 @@ summary.row:focus-visible {
 }
 .settings-menu.open { display: block; }
 .settings-menu button {
-  display: block; width: 100%;
+  display: flex; align-items: center; width: 100%;
   background: none; border: none;
   text-align: left;
   padding: 7px 10px;
+  gap: 10px;
   font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
   color: var(--ink);
   cursor: pointer;
@@ -164,6 +163,17 @@ summary.row:focus-visible {
 }
 .settings-menu button:hover { background: var(--tag-bg); }
 .settings-menu button.muted { color: var(--muted); font-size: 12px; }
+.settings-menu .menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.settings-menu .menu-icon svg { width: 16px; height: 16px; display: block; }
+.settings-menu button:hover .menu-icon { color: var(--ink); }
 .settings-menu .menu-divider {
   height: 1px;
   background: var(--line);
@@ -261,6 +271,13 @@ summary.row:focus-visible {
   background: rgba(255,255,255,0.3);
   border-color: rgba(255,255,255,0.38);
 }
+
+/* When expanding would only reveal ≤10 more lines, just show the whole
+   block: drop the cap, drop the fade, hide the expand chevron. Copy stays. */
+.code-block.no-expand { cursor: default; }
+.code-block.no-expand .code-content { max-height: none; overflow-y: visible; }
+.code-block.no-expand .code-fade { display: none; }
+.code-block.no-expand .code-action.toggle { display: none; }
 
 /* Modal overlay used by the gear menu's "About" and "Suggested hooks". */
 .modal-backdrop {
@@ -417,6 +434,66 @@ summary.row:focus-visible {
   gap: 10px;
   margin: 20px 0 16px;
 }
+
+/* A settings-row: label on the left, toggle on the right. Used by the
+   "Allow files in /tmp" modal so the user can flip the state without
+   committing — Save commits, Cancel discards. */
+.modal-body .setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--tag-bg);
+  border-radius: 6px;
+  margin: 18px 0 14px;
+  cursor: pointer;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+}
+.modal-body .toggle-switch {
+  display: inline-block;
+  position: relative;
+  width: 34px;
+  height: 20px;
+  background: var(--dim);
+  border-radius: 10px;
+  transition: background 0.18s ease;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.modal-body .toggle-switch.on { background: var(--ink); }
+.modal-body .toggle-switch .toggle-thumb {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  background: var(--bg);
+  border-radius: 50%;
+  transition: transform 0.18s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+.modal-body .toggle-switch.on .toggle-thumb { transform: translateX(14px); }
+.modal-body .toggle-switch:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--ink));
+  outline-offset: 2px;
+}
+
+/* Trailing row of Cancel / Save actions for settings modals. */
+.modal-body .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.modal-body .modal-cta.secondary {
+  background: none;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.modal-body .modal-cta.secondary:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+  opacity: 1;
+}
 .modal-body .data-file-path {
   font: 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
   color: var(--muted);
@@ -531,7 +608,17 @@ main {
   overflow: auto;
   padding: 18px 22px;
   height: 100%;
+  /* Grid items default to min-width:auto, which lets wide content (e.g. a
+     wide table) blow the pane past its 1fr track and push the whole page
+     sideways. min-width:0 keeps the pane at its assigned track width so
+     inner scroll containers can actually clamp. */
+  min-width: 0;
 }
+/* Detail (right) pane: 16px top + 16px right gives the sticky toolbar its
+   corner gap, consistent across normal and focus modes. .detail-header
+   carries any additional vertical breathing room (e.g. focus-mode
+   centering). */
+.pane.right { padding-top: 16px; padding-right: 16px; }
 .left {
   background: var(--card);
 }
@@ -581,9 +668,16 @@ body.focus-mode .pane.left, body.focus-mode .splitter {
   pointer-events: none;
 }
 .pane.right { transition: padding 0.3s ease; }
-body.focus-mode .pane.right { padding: 52px 44px; }
+/* Focus mode: pane keeps the same 16px top/right corner gap so the
+   toolbar stays put. Extra vertical breathing room above the centered
+   content rides on .detail-header's padding-top. */
+body.focus-mode .pane.right { padding: 16px 16px 52px; }
 body.focus-mode .markdown { max-width: 720px; margin: 0 auto; }
-body.focus-mode .detail-header { max-width: 720px; margin: 0 auto 18px; }
+body.focus-mode .detail-header {
+  max-width: 720px;
+  margin: 0 auto 18px;
+  padding-top: 36px;
+}
 
 .tree-pane { display: none; }
 .tree-pane.active { display: block; }
@@ -724,29 +818,118 @@ details { display: block; }
   padding-bottom: 14px;
   margin-bottom: 18px;
 }
-.detail-header .crumb-row {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; margin-bottom: 6px;
-}
 .detail-header .crumb {
   font: 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
   color: var(--dim);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  flex: 1;
+  margin-bottom: 6px;
 }
-.detail-header .actions {
-  display: flex; gap: 8px; flex-shrink: 0;
+/* Toolbar floats in the top-right of the detail pane. With the pane's
+   top padding removed, the toolbar sits at the outer pane edge in any
+   mode (regular OR focus), giving a consistent corner gap. Negative
+   margin-bottom keeps it from pushing content down — at scrollTop=0 the
+   crumb sits at the natural top of .detail-header (whose padding-top
+   carries the breathing room), while the toolbar floats over the right
+   corner. */
+.detail-toolbar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+  z-index: 5;
+  margin-bottom: -32px;
 }
-.detail-header .action-btn {
-  background: none; border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 3px 8px;
-  font: 11px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
-  color: var(--muted);
+.detail-toolbar .actions {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  flex-shrink: 0;
+}
+.detail-toolbar .toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+  margin: 0 4px;
+}
+body.is-popup .detail-toolbar .toolbar-sep { display: none; }
+
+.detail-toolbar .action-btn {
+  background: none; border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font: 11px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+  color: var(--ink);
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
-.detail-header .action-btn:hover { color: var(--ink); border-color: var(--ink); }
+.detail-toolbar .action-btn:hover { background: var(--tag-bg); }
+.detail-toolbar .action-btn.icon-only {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+.detail-toolbar .action-btn .btn-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  /* Icons read as supporting weight; the label (or button bg on hover) carries
+     the primary contrast. */
+  color: var(--muted);
+  transition: color 0.15s ease;
+}
+.detail-toolbar .action-btn:hover .btn-icon { color: var(--ink); }
+.detail-toolbar .action-btn.source-btn.is-active .btn-icon,
+.detail-toolbar .action-btn.flash .btn-icon { color: inherit; }
+.detail-toolbar .action-btn .btn-icon svg { width: 16px; height: 16px; display: block; }
+/* Stacked-icon crossfade (used by Copy: default ↔ check). */
+.detail-toolbar .action-btn .btn-icon .icon {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.22s ease,
+              transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.detail-toolbar .action-btn .btn-icon .icon-success {
+  opacity: 0;
+  transform: scale(0.55);
+}
+.detail-toolbar .action-btn.flash .btn-icon .icon-default {
+  opacity: 0;
+  transform: scale(0.55);
+}
+.detail-toolbar .action-btn.flash .btn-icon .icon-success {
+  opacity: 1;
+  transform: scale(1);
+}
+.detail-toolbar .action-btn.flash {
+  background: var(--tag-bg);
+}
+.detail-toolbar .action-btn.source-btn.is-active {
+  background: var(--ink);
+  color: var(--bg);
+}
+.detail-toolbar .action-btn.source-btn.is-active:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
 .detail-header h2 {
   font: 600 18px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
   margin: 0 0 8px; letter-spacing: -0.005em;
@@ -785,6 +968,17 @@ body.is-popup .popout-btn { display: none; }
 .markdown {
   font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
   color: var(--ink);
+  /* No max-width here — prose children below cap themselves at 720px for
+     reading comfort, while wide elements like .table-wrap stretch to fill
+     the whole pane. */
+}
+.markdown > p,
+.markdown > h1, .markdown > h2, .markdown > h3,
+.markdown > h4, .markdown > h5, .markdown > h6,
+.markdown > ul, .markdown > ol,
+.markdown > blockquote,
+.markdown > pre,
+.markdown > hr {
   max-width: 720px;
 }
 .markdown h1, .markdown h2, .markdown h3, .markdown h4 {
@@ -806,7 +1000,12 @@ body.is-popup .popout-btn { display: none; }
   border-radius: 3px;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
+  /* Long unbreakable strings (e.g. file paths) inside inline code would
+     otherwise overflow the prose column. */
+  overflow-wrap: anywhere;
 }
+/* But not inside <pre> — those use horizontal scroll, not wrap. */
+.markdown pre code { overflow-wrap: normal; }
 .markdown pre {
   background: #1b1b18; color: #f0ede2;
   padding: 12px 14px; border-radius: 6px;
@@ -821,15 +1020,18 @@ body.is-popup .popout-btn { display: none; }
   margin: 0 0 12px;
 }
 .markdown hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
+/* Wrapper provides the horizontal scroll only when the inner table is wider
+   than the pane. The table itself uses min-width:100% so narrow tables
+   stretch to fill the available space instead of sitting at content width. */
+.markdown .table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 0 0 14px;
+}
 .markdown table {
   border-collapse: collapse; font-size: 13px;
-  margin: 0 0 14px;
-  /* display:block + max-width:100% turns wide tables into a horizontally
-     scrollable strip instead of pushing the whole pane sideways. */
-  display: block;
-  width: max-content;
-  max-width: 100%;
-  overflow-x: auto;
+  min-width: 100%;
+  margin: 0;
 }
 .markdown table th, .markdown table td {
   border: 1px solid var(--line); padding: 5px 9px; text-align: left;
@@ -844,6 +1046,34 @@ body.is-popup .popout-btn { display: none; }
 }
 .markdown a.internal-link:hover { background: var(--selected); border-bottom-color: var(--ink); }
 .markdown a.internal-link::before { content: "↳ "; color: var(--dim); }
+
+/* Source view — what the .markdown container becomes when the user clicks
+   the Source toggle. Two-column grid: gutter (line numbers, user-select:none)
+   + content (one .line div per source line, body font, pre-wrap so long
+   lines soft-wrap rather than horizontal-scroll). */
+.md-source {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 14px;
+  row-gap: 0;
+  max-width: 720px;
+  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  color: var(--ink);
+}
+.md-source .ln {
+  color: var(--dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  padding-top: 2px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.md-source .line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 1.6em;
+}
 
 @media (max-width: 720px) {
   main { grid-template-columns: 1fr; }

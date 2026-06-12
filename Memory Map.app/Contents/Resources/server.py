@@ -178,6 +178,9 @@ def synthesize_html(focus=False):
         + ';\n'
         + 'window.MEMORY_MAP_DATA_FILE_IS_OVERRIDE = '
         + ('true' if cfg_loaded.get('data_file') else 'false')
+        + ';\n'
+        + 'window.MEMORY_MAP_ALLOW_TMP = '
+        + ('true' if cfg_loaded.get('allow_tmp') else 'false')
         + ';'
     )
     data_script = data_script + '\n' + extras_script
@@ -210,9 +213,14 @@ def render_viewer(raw_path):
         raise ViewerError(f'Path must be absolute: {raw_path}')
     real = os.path.realpath(path)
     home_real = os.path.realpath(os.path.expanduser('~'))
-    # Defensive: only allow files inside the user's home dir.
-    if not real.startswith(home_real + os.sep) and real != home_real:
-        raise ViewerError(f'File is outside your home directory: {real}')
+    # Defensive: only allow files inside known-safe roots. Home is always
+    # allowed; /tmp is opt-in (set `allow_tmp: true` in config) because Claude
+    # and other CLIs often scratch markdown files there.
+    allowed_roots = [home_real]
+    if load_config().get('allow_tmp'):
+        allowed_roots += ['/tmp', '/private/tmp']
+    if not any(real == r or real.startswith(r + os.sep) for r in allowed_roots):
+        raise ViewerError(f'File is outside the allowed paths: {real}')
     if not os.path.isfile(real):
         raise ViewerError(f'Not a regular file: {real}')
     if not real.lower().endswith(('.md', '.markdown', '.mdown')):
@@ -478,6 +486,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     'workspace_dir': picked,
                     'stderr': build.stderr,
                 })
+            except Exception as e:
+                self._json({'ok': False, 'stderr': f'{type(e).__name__}: {e}'}, status=500)
+            return
+
+        if self.path == '/api/set-allow-tmp':
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                body = json.loads(self.rfile.read(length) or b'{}')
+                cfg = load_config()
+                cfg['allow_tmp'] = bool(body.get('enabled'))
+                save_config(cfg)
+                self._json({'ok': True, 'allow_tmp': cfg['allow_tmp']})
             except Exception as e:
                 self._json({'ok': False, 'stderr': f'{type(e).__name__}: {e}'}, status=500)
             return

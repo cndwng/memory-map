@@ -58,7 +58,9 @@
     border-radius: 3px;
     -webkit-box-decoration-break: clone;
     box-decoration-break: clone;
+    overflow-wrap: anywhere;
   }
+  .markdown pre code { overflow-wrap: normal; }
   .markdown pre {
     background: #1b1b18; color: #f0ede2;
     padding: 12px 14px; border-radius: 6px;
@@ -73,9 +75,15 @@
     margin: 0 0 12px;
   }
   .markdown hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
+  .markdown .table-wrap {
+    overflow-x: auto;
+    max-width: 100%;
+    margin: 0 0 14px;
+  }
   .markdown table {
     border-collapse: collapse; font-size: 13px;
-    margin: 0 0 14px;
+    min-width: 100%;
+    margin: 0;
   }
   .markdown table th, .markdown table td {
     border: 1px solid var(--line); padding: 5px 9px; text-align: left;
@@ -83,6 +91,205 @@
   .markdown table th { background: var(--tag-bg); }
   .markdown a { color: #6366f1; }
   .markdown img { max-width: 100%; height: auto; }
+
+  /* Floating toolbar pinned to the top-right of the window. Negative margins
+     keep it from pushing the crumb/title down at scrollTop=0. */
+  .detail-toolbar {
+    position: sticky;
+    top: 8px;
+    display: flex;
+    justify-content: flex-end;
+    pointer-events: none;
+    z-index: 5;
+    padding: 0 28px;
+    margin-top: -20px;
+    margin-bottom: -32px;
+  }
+  .detail-toolbar .actions {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  }
+  .action-btn {
+    background: none; border: 1px solid transparent;
+    border-radius: 5px;
+    padding: 4px 8px;
+    font: 11px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui;
+    color: var(--ink);
+    cursor: pointer;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .action-btn:hover { background: var(--tag-bg); }
+  .action-btn .btn-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+  .action-btn .btn-icon svg { width: 16px; height: 16px; display: block; }
+  .action-btn .btn-icon .icon {
+    position: absolute;
+    inset: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.22s ease,
+                transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .action-btn .btn-icon .icon-success {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  .action-btn.flash .btn-icon .icon-default {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  .action-btn.flash .btn-icon .icon-success {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .action-btn.flash {
+    background: var(--tag-bg);
+  }
+  .action-btn.source-btn.is-active {
+    background: var(--ink);
+    color: var(--bg);
+  }
+  .action-btn.source-btn.is-active:hover {
+    background: var(--ink);
+    color: var(--bg);
+  }
+
+  @keyframes mm-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Source view (rendered ↔ source toggle) */
+  .md-source {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 14px;
+    row-gap: 0;
+    max-width: 720px;
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    color: var(--ink);
+  }
+  .md-source .ln {
+    color: var(--dim);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    padding-top: 2px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .md-source .line {
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 1.6em;
+  }
+
+  /* Code-block copy+expand affordance (mirrors the main app's styles) */
+  .code-block {
+    position: relative;
+    background: #1b1b18;
+    color: #f0ede2;
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 8px 0;
+    cursor: pointer;
+    max-width: 720px;
+  }
+  .code-block.expanded { cursor: default; }
+  .code-block .code-content {
+    margin: 0;
+    padding: 14px 16px;
+    font: 12px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+    white-space: pre;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-height: 112px;
+    transition: max-height 0.18s ease;
+  }
+  .code-block.expanded .code-content {
+    max-height: none;
+    overflow-y: visible;
+  }
+  .code-block .code-fade {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 48px;
+    pointer-events: none;
+    background: linear-gradient(to bottom, rgba(27,27,24,0), rgba(27,27,24,1));
+    transition: opacity 0.15s ease;
+  }
+  .code-block.expanded .code-fade { opacity: 0; }
+  .code-block .code-actions {
+    position: absolute;
+    top: 8px; right: 8px;
+    display: flex;
+    gap: 2px;
+    z-index: 1;
+  }
+  .code-block .code-action {
+    position: relative;
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 6px;
+    color: #f0ede2;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.28s ease, border-color 0.28s ease;
+  }
+  .code-block .code-action:hover {
+    background: rgba(255,255,255,0.16);
+    border-color: rgba(255,255,255,0.14);
+  }
+  .code-block .code-action svg { width: 14px; height: 14px; display: block; }
+  .code-block .code-action .icon {
+    position: absolute;
+    inset: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.22s ease,
+                transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .code-block .code-action .icon-success {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  .code-block .code-action.flash .icon-default {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  .code-block .code-action.flash .icon-success {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .code-block .code-action.flash {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.38);
+  }
+  .code-block.no-expand { cursor: default; }
+  .code-block.no-expand .code-content { max-height: none; overflow-y: visible; }
+  .code-block.no-expand .code-fade { display: none; }
+  .code-block.no-expand .code-action.toggle { display: none; }
 
   /* Find bar — same look as the main app's find. Floats top-right. */
   .find-bar {
@@ -148,6 +355,21 @@
 </style>
 </head>
 <body>
+<div class="detail-toolbar">
+  <div class="actions">
+    <button type="button" class="action-btn copy-md-btn" id="copy-md-btn" title="Copy markdown (⌘A)">
+      <span class="btn-icon">
+        <span class="icon icon-default"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5V4a1.5 1.5 0 011.5-1.5h6.5"/></svg></span>
+        <span class="icon icon-success"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 5.5"/></svg></span>
+      </span>
+      <span class="btn-label">Copy</span>
+    </button>
+    <button type="button" class="action-btn source-btn" id="source-btn" title="Show source (Shift+S)">
+      <span class="btn-icon"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 5 2.5 8l3 3M10.5 5l3 3-3 3M9.5 3.5l-3 9"/></svg></span>
+      <span class="btn-label">Source</span>
+    </button>
+  </div>
+</div>
 <div class="wrap">
   <div class="crumb">__CRUMB__</div>
   <h1 class="title">__TITLE__</h1>
@@ -170,9 +392,291 @@
 
 <script>
   const raw = __CONTENT_JSON__;
-  document.getElementById('content').innerHTML = window.marked
-    ? window.marked.parse(raw)
-    : '<pre>' + raw.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]) + '</pre>';
+  // marked v13's default `del` regex (`~~?`) treats single tildes as
+  // strikethrough too. Restrict to the GFM-standard double tilde.
+  if (window.marked && window.marked.use) {
+    window.marked.use({
+      tokenizer: {
+        del(src) {
+          const cap = /^~~(?=\S)([\s\S]*?\S)~~(?!~)/.exec(src);
+          if (cap) {
+            return {
+              type: 'del',
+              raw: cap[0],
+              text: cap[1],
+              tokens: this.lexer.inlineTokens(cap[1]),
+            };
+          }
+        },
+      },
+    });
+  }
+  const escHtml = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+
+  // ---------- icon + code-block helpers (mirror of app.js) ----------
+  const codeExpandIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6 L8 10 L12 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const codeCollapseIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10 L8 6 L12 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const codeCopyIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3 11V4a1 1 0 011-1h7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  const codeCheckIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 L6.5 11.5 L12.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function codeBlockHTML(snippet) {
+    return (
+      '<div class="code-block" role="region" aria-label="Code snippet" tabindex="0">' +
+        '<div class="code-actions">' +
+          '<button type="button" class="code-action toggle" title="Expand" aria-label="Expand">' + codeExpandIcon + '</button>' +
+          '<button type="button" class="code-action copy" title="Copy" aria-label="Copy">' +
+            '<span class="icon icon-default">' + codeCopyIcon + '</span>' +
+            '<span class="icon icon-success">' + codeCheckIcon + '</span>' +
+          '</button>' +
+        '</div>' +
+        '<pre class="code-content">' + escHtml(snippet) + '</pre>' +
+        '<div class="code-fade"></div>' +
+      '</div>'
+    );
+  }
+
+  function wireCodeBlocks(root) {
+    root.querySelectorAll('.code-block').forEach(block => {
+      const toggle = block.querySelector('.code-action.toggle');
+      const copy = block.querySelector('.code-action.copy');
+      const pre = block.querySelector('.code-content');
+      function setExpanded(state) {
+        block.classList.toggle('expanded', state);
+        if (toggle) {
+          toggle.innerHTML = state ? codeCollapseIcon : codeExpandIcon;
+          toggle.title = state ? 'Collapse' : 'Expand';
+          toggle.setAttribute('aria-label', state ? 'Collapse' : 'Expand');
+        }
+      }
+      block.addEventListener('click', e => {
+        if (e.target.closest('.code-action')) return;
+        if (block.classList.contains('no-expand')) return;
+        if (block.classList.contains('expanded')) return;
+        setExpanded(true);
+      });
+      if (toggle) toggle.addEventListener('click', e => {
+        e.stopPropagation();
+        setExpanded(!block.classList.contains('expanded'));
+      });
+      if (copy && pre) copy.addEventListener('click', async e => {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(pre.textContent);
+          copy.classList.add('flash');
+          const origTitle = copy.getAttribute('title');
+          copy.setAttribute('title', 'Copied ✓');
+          setTimeout(() => {
+            copy.classList.remove('flash');
+            copy.setAttribute('title', origTitle);
+          }, 1400);
+        } catch (e) {}
+      });
+    });
+  }
+
+  function wrapPreBlocks(root) {
+    root.querySelectorAll('pre').forEach(pre => {
+      if (pre.closest('.code-block')) return;
+      const code = pre.querySelector('code');
+      const text = code ? code.textContent : pre.textContent;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = codeBlockHTML(text);
+      const block = wrapper.firstElementChild;
+      pre.parentNode.replaceChild(block, pre);
+    });
+  }
+
+  function applyNoExpandRule(root) {
+    root.querySelectorAll('.code-block').forEach(block => {
+      const pre = block.querySelector('.code-content');
+      if (!pre) return;
+      const cs = getComputedStyle(pre);
+      const lh = parseFloat(cs.lineHeight) || 19;
+      const capPx = parseFloat(cs.maxHeight) || 112;
+      const hiddenLines = (pre.scrollHeight - capPx) / lh;
+      if (hiddenLines <= 10) block.classList.add('no-expand');
+    });
+  }
+
+  // ---------- markdown rendering with per-block source-line anchors ----------
+  function renderMarkdownWithLineTags(content) {
+    if (!(window.marked && window.marked.lexer && window.marked.parser)) {
+      return window.marked
+        ? window.marked.parse(content)
+        : '<pre>' + escHtml(content) + '</pre>';
+    }
+    const tokens = window.marked.lexer(content);
+    const parts = [];
+    let line = 1;
+    for (const tok of tokens) {
+      const nlines = (tok.raw && tok.raw.match(/\n/g) || []).length;
+      if (tok.type === 'space') {
+        line += nlines;
+        continue;
+      }
+      const html = window.marked.parser([tok]);
+      parts.push('<div data-md-line="' + line + '">' + html + '</div>');
+      line += nlines;
+    }
+    return parts.join('');
+  }
+
+  function buildSourceView(content) {
+    const div = document.createElement('div');
+    div.className = 'md-source';
+    const lines = content.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const ln = document.createElement('div');
+      ln.className = 'ln';
+      ln.textContent = String(i + 1);
+      const line = document.createElement('div');
+      line.className = 'line';
+      line.dataset.line = String(i + 1);
+      line.textContent = lines[i];
+      div.appendChild(ln);
+      div.appendChild(line);
+    }
+    return div;
+  }
+
+  // ---------- table wrapping ----------
+  function wrapTables(root) {
+    root.querySelectorAll('table').forEach(t => {
+      if (t.parentElement && t.parentElement.classList.contains('table-wrap')) return;
+      const wrap = document.createElement('div');
+      wrap.className = 'table-wrap';
+      t.parentNode.insertBefore(wrap, t);
+      wrap.appendChild(t);
+    });
+  }
+
+  function postProcessRendered(root) {
+    wrapTables(root);
+    wrapPreBlocks(root);
+    applyNoExpandRule(root);
+    wireCodeBlocks(root);
+  }
+
+  // ---------- initial render ----------
+  const contentEl = document.getElementById('content');
+  contentEl.innerHTML = renderMarkdownWithLineTags(raw);
+  postProcessRendered(contentEl);
+
+  // ---------- view-mode toggle (rendered ↔ source) ----------
+  let viewMode = 'rendered';
+
+  function topmostAnchor(container, attr) {
+    const containerTop = container.getBoundingClientRect().top;
+    let best = null;
+    const candidates = container.querySelectorAll('[' + attr + ']');
+    for (const el of candidates) {
+      const top = el.getBoundingClientRect().top - containerTop;
+      if (top >= -2) { best = { el, offset: top }; break; }
+      best = { el, offset: top };
+    }
+    return best;
+  }
+
+  function scrollToAnchor(container, el, offset) {
+    const containerTop = container.getBoundingClientRect().top;
+    const elTop = el.getBoundingClientRect().top;
+    container.scrollTop = container.scrollTop + ((elTop - containerTop) - offset);
+  }
+
+  function setViewMode(mode) {
+    if (viewMode === mode) return;
+    // The popout uses the window itself as the scroller (body is the only
+    // scrollable container). Use document.scrollingElement for measurement.
+    const scroller = document.scrollingElement || document.documentElement;
+    const outAttr = (viewMode === 'rendered') ? 'data-md-line' : 'data-line';
+    const anchor = topmostAnchor(scroller, outAttr);
+
+    if (mode === 'source') {
+      contentEl.innerHTML = '';
+      contentEl.appendChild(buildSourceView(raw));
+    } else {
+      contentEl.innerHTML = renderMarkdownWithLineTags(raw);
+      postProcessRendered(contentEl);
+    }
+    viewMode = mode;
+
+    // Brief fade-in so the swap feels animated.
+    contentEl.style.animation = 'none';
+    void contentEl.offsetHeight;
+    contentEl.style.animation = 'mm-fade-in 0.2s ease-out';
+
+    const btn = document.getElementById('source-btn');
+    if (btn) {
+      btn.classList.toggle('is-active', mode === 'source');
+      btn.setAttribute(
+        'title',
+        mode === 'source' ? 'Show rendered (Shift+S)' : 'Show source (Shift+S)'
+      );
+    }
+
+    if (anchor && anchor.el) {
+      const N = parseInt(anchor.el.getAttribute(outAttr), 10);
+      if (!isNaN(N)) {
+        let target = null;
+        if (mode === 'source') {
+          target = contentEl.querySelector('.line[data-line="' + N + '"]');
+        } else {
+          const blocks = contentEl.querySelectorAll('[data-md-line]');
+          for (const b of blocks) {
+            const ml = parseInt(b.getAttribute('data-md-line'), 10);
+            if (ml <= N) target = b;
+            else break;
+          }
+        }
+        if (target) scrollToAnchor(scroller, target, anchor.offset);
+      }
+    }
+  }
+
+  document.getElementById('source-btn').addEventListener('click', () => {
+    setViewMode(viewMode === 'source' ? 'rendered' : 'source');
+  });
+
+  // Build the clipboard payload: displayed header (title + crumb) as
+  // markdown, then a separator, then the raw .md body. Popout doesn't have
+  // meta tags (description/triggers/etc.) so the header is just name + path.
+  function buildCopyText() {
+    const title = (document.querySelector('h1.title')?.textContent || '').trim();
+    const crumb = (document.querySelector('.crumb')?.textContent || '').trim();
+    const parts = [];
+    if (title) parts.push('# ' + title);
+    if (crumb) parts.push('`' + crumb + '`');
+    parts.push('---');
+    parts.push(raw || '');
+    return parts.join('\n\n');
+  }
+
+  async function copyDocToClipboard() {
+    const btn = document.getElementById('copy-md-btn');
+    try {
+      await navigator.clipboard.writeText(buildCopyText());
+      if (btn) {
+        btn.classList.add('flash');
+        const origTitle = btn.getAttribute('title');
+        btn.setAttribute('title', 'Copied ✓');
+        setTimeout(() => {
+          btn.classList.remove('flash');
+          if (origTitle) btn.setAttribute('title', origTitle);
+        }, 1400);
+      }
+    } catch (e) {}
+  }
+  document.getElementById('copy-md-btn').addEventListener('click', copyDocToClipboard);
+
+  // ⌘A / Ctrl+A outside the find input → copy the entire doc to clipboard.
+  document.addEventListener('keydown', e => {
+    if (!(e.metaKey || e.ctrlKey) || e.key !== 'a' && e.key !== 'A') return;
+    if (e.shiftKey || e.altKey) return;
+    const t = e.target && e.target.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+    e.preventDefault();
+    copyDocToClipboard();
+  });
 
   // ---------- in-page find (⌘F) ----------
   // Standalone version of the find IIFE in app.js. Scoped to .markdown
@@ -323,6 +827,15 @@
     if (e.key === 'Escape' && document.getElementById('find-bar').hidden) {
       e.preventDefault();
     }
+  });
+
+  // Shift+S toggles source view. Suppressed when typing in the find input.
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'S' || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+    e.preventDefault();
+    setViewMode(viewMode === 'source' ? 'rendered' : 'source');
   });
 </script>
 </body>

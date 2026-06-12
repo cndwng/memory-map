@@ -6,6 +6,76 @@
   const FILES = D.files;
   const META = D.meta;
 
+  // marked v13's default `del` regex (`~~?`) treats single tildes as
+  // strikethrough too. Restrict to the GFM-standard double tilde so prose
+  // like "use ~text~ for X" renders verbatim instead of crossed out.
+  if (window.marked && window.marked.use) {
+    window.marked.use({
+      tokenizer: {
+        del(src) {
+          const cap = /^~~(?=\S)([\s\S]*?\S)~~(?!~)/.exec(src);
+          if (cap) {
+            return {
+              type: 'del',
+              raw: cap[0],
+              text: cap[1],
+              tokens: this.lexer.inlineTokens(cap[1]),
+            };
+          }
+        },
+      },
+    });
+  }
+
+  // ---------- Icon SVGs + button-content helpers ----------
+  // Declared up front (before applyInitialParams runs) so renderRow can use
+  // them even when the URL has ?path= and the very first render happens at
+  // page-init time. Lucide-style, 16px viewBox, currentColor strokes.
+  const codeExpandIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6 L8 10 L12 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const codeCollapseIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10 L8 6 L12 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const codeCopyIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3 11V4a1 1 0 011-1h7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  const codeCheckIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 L6.5 11.5 L12.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const iconDownload =
+    '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/>' +
+    '</svg>';
+  const iconCopy =
+    '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>' +
+      '<path d="M3.5 10.5V4a1.5 1.5 0 011.5-1.5h6.5"/>' +
+    '</svg>';
+  const iconCheck =
+    '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M3.5 8.5 6.5 11.5 12.5 5.5"/>' +
+    '</svg>';
+  const iconPopout =
+    '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M7 3.5H3.5v9h9V9M9 3.5h3.5V7M12.5 3.5l-5 5"/>' +
+    '</svg>';
+  const iconSource =
+    '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M5.5 5 2.5 8l3 3M10.5 5l3 3-3 3M9.5 3.5l-3 9"/>' +
+    '</svg>';
+  const iconFocus =
+    '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/>' +
+    '</svg>';
+  const iconExitFocus =
+    '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M6 3v3H3M10 3v3h3M13 10h-3v3M3 10h3v3"/>' +
+    '</svg>';
+  function btnInner(icon, label) {
+    return '<span class="btn-icon">' + icon + '</span>' +
+      (label ? '<span class="btn-label">' + label + '</span>' : '');
+  }
+  function copyBtnInner(label) {
+    return '<span class="btn-icon">' +
+      '<span class="icon icon-default">' + iconCopy + '</span>' +
+      '<span class="icon icon-success">' + iconCheck + '</span>' +
+    '</span>' +
+    '<span class="btn-label">' + label + '</span>';
+  }
+
   // Populate trees and tab counts from the data blob.
   for (const [tab, html] of Object.entries(D.trees || {})) {
     const pane = document.querySelector(`.tree-pane[data-tab="${tab}"] .tree`);
@@ -109,7 +179,22 @@
       try { localStorage.setItem('memory-map-focus', on ? '1' : '0'); } catch (e) {}
     }
     const btn = document.querySelector('.focus-btn');
-    if (btn) btn.textContent = on ? '⤡ Exit focus' : '⤢ Focus';
+    if (btn) {
+      const iconHost = btn.querySelector('.btn-icon');
+      const label = on ? 'Exit focus' : 'Focus';
+      if (iconHost) {
+        // setFocus is called before the icon SVGs are in scope at the very
+        // first run (URL-driven init from line ~140) — guard by checking
+        // `iconFocus` existence. Real renders always have it.
+        if (typeof iconFocus !== 'undefined') {
+          iconHost.innerHTML = on ? iconExitFocus : iconFocus;
+        }
+        btn.title = label;
+        btn.setAttribute('aria-label', label);
+      } else {
+        btn.textContent = on ? '⤡ Exit focus' : '⤢ Focus';
+      }
+    }
   }
   // If the URL has focus=1, the server pre-set the body class — don't touch
   // localStorage. Otherwise restore from localStorage. (Popups share a Chrome
@@ -262,6 +347,12 @@
 
   // ---------- rendering ----------
   let lastSelected = null;
+  // Current open document. Used by the Source toggle to re-render either
+  // side of the swap without re-fetching from FILES, by the keyboard
+  // shortcut to know what to toggle, and by the Copy button to construct
+  // a clipboard payload that includes the displayed header (name, path,
+  // description, triggers, tools, used-by, date) above the body.
+  const currentDoc = { path: '', content: '', name: '', crumbDisplay: '', meta: {} };
 
   function openByPath(absPath, opts) {
     const sel = (window.CSS && CSS.escape ? CSS.escape(absPath) : absPath.replace(/"/g, '\\"'));
@@ -320,9 +411,11 @@
     r.classList.add('selected');
     lastSelected = r;
     const name = r.querySelector('.name').textContent;
-    const html = window.marked
-      ? window.marked.parse(content)
-      : '<pre>' + content.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]) + '</pre>';
+    currentDoc.path = path;
+    currentDoc.content = content;
+    currentDoc.name = name;
+    currentDoc.meta = meta;
+    const html = renderMarkdownWithLineTags(content);
     const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 
     const desc = (meta.desc || '').trim();
@@ -335,6 +428,10 @@
       ? '<div class="meta-row"><span class="meta-label">Tools</span>'
         + meta.tools.map(t => '<span class="tag tool">' + esc(t) + '</span>').join('') + '</div>'
       : '';
+    const usedByHtml = (meta.used_by && meta.used_by.length)
+      ? '<div class="meta-row"><span class="meta-label">Used by</span>'
+        + meta.used_by.map(t => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>'
+      : '';
     const dateHtml = meta.date
       ? '<div class="meta-row"><span class="meta-label">Last modified</span><span class="tag">' + esc(meta.date) + '</span></div>'
       : '';
@@ -342,26 +439,39 @@
     const crumbDisplay = (meta.real_path !== undefined && meta.real_path)
       ? meta.real_path.replace(/^\/Users\/[^/]+/, '~')
       : tildePath;
+    currentDoc.crumbDisplay = crumbDisplay;
 
     const inFocus = document.body.classList.contains('focus-mode');
+    // Primary actions: labeled (most common — Copy + Source).
+    const copyMdBtn =
+      '<button class="action-btn copy-md-btn" title="Copy markdown (⌘A)">' + copyBtnInner('Copy') + '</button>';
+    const sourceBtn =
+      '<button class="action-btn source-btn" title="Show source (Shift+S)">' + btnInner(iconSource, 'Source') + '</button>';
+    // Secondary actions: icon-only, label via tooltip + aria-label.
     const downloadBtn = isSynthetic(path) ? '' :
-      '<button class="action-btn download-btn" title="Download .md">↓ Download</button>';
+      '<button class="action-btn icon-only download-btn" title="Download .md" aria-label="Download .md">' + btnInner(iconDownload) + '</button>';
     const popoutBtn = isSynthetic(path) ? '' :
-      '<button class="action-btn popout-btn" title="Open in a new window">⇗ Pop out</button>';
+      '<button class="action-btn icon-only popout-btn" title="Open in a new window" aria-label="Pop out">' + btnInner(iconPopout) + '</button>';
     const focusBtn =
-      '<button class="action-btn focus-btn">' + (inFocus ? '⤡ Exit focus' : '⤢ Focus') + '</button>';
+      '<button class="action-btn icon-only focus-btn" title="' + (inFocus ? 'Exit focus' : 'Focus') + '" aria-label="' + (inFocus ? 'Exit focus' : 'Focus') + '">' + btnInner(inFocus ? iconExitFocus : iconFocus) + '</button>';
 
     detail.innerHTML =
-      '<div class="detail-header">' +
-        '<div class="crumb-row">' +
-          '<span class="crumb">' + crumbDisplay + '</span>' +
-          '<div class="actions">' + downloadBtn + popoutBtn + focusBtn + '</div>' +
+      '<div class="detail-toolbar">' +
+        '<div class="actions">' +
+          copyMdBtn + sourceBtn +
+          '<span class="toolbar-sep" aria-hidden="true"></span>' +
+          downloadBtn + popoutBtn + focusBtn +
         '</div>' +
+      '</div>' +
+      '<div class="detail-header">' +
+        '<div class="crumb">' + crumbDisplay + '</div>' +
         '<h2>' + esc(name) + '</h2>' +
-        descHtml + triggersHtml + toolsHtml + dateHtml +
+        descHtml + triggersHtml + toolsHtml + usedByHtml + dateHtml +
       '</div>' +
       '<div class="markdown">' + html + '</div>';
     detail.scrollTop = 0;
+    // Switching files resets view mode — no sticky state across files.
+    detail.dataset.viewMode = 'rendered';
 
     // wire action buttons
     const dlBtn = detail.querySelector('.download-btn');
@@ -386,10 +496,41 @@
     if (popoutBtnEl) popoutBtnEl.addEventListener('click', () => {
       openInPopup(path);
     });
+    const sourceBtnEl = detail.querySelector('.source-btn');
+    if (sourceBtnEl) sourceBtnEl.addEventListener('click', () => {
+      const next = (detail.dataset.viewMode === 'source') ? 'rendered' : 'source';
+      setViewMode(next);
+    });
+    const copyMdBtnEl = detail.querySelector('.copy-md-btn');
+    if (copyMdBtnEl) copyMdBtnEl.addEventListener('click', () => copyDocToClipboard());
 
-    // intercept relative .md links — resolve and open in our view
+    // Same post-processing on the freshly-rendered markdown (tables, links,
+    // code blocks). Factored so the Source toggle can re-apply it when
+    // swapping back to rendered view.
+    const markdownEl = detail.querySelector('.markdown');
+    if (markdownEl) postProcessRendered(markdownEl, path);
+
+    // Re-run an open find against the freshly-rendered content.
+    if (window.__mm_reFind) window.__mm_reFind();
+  }
+
+  // Tables, internal-link interception, and the universal code-block
+  // copy+expand wrapper. Used by initial render in renderRow and by
+  // setViewMode when swapping source → rendered.
+  function postProcessRendered(markdownEl, path) {
+    // Wrap tables so wide ones scroll horizontally inside their own strip,
+    // while narrow ones still stretch to fill the pane.
+    markdownEl.querySelectorAll('table').forEach(t => {
+      if (t.parentElement && t.parentElement.classList.contains('table-wrap')) return;
+      const wrap = document.createElement('div');
+      wrap.className = 'table-wrap';
+      t.parentNode.insertBefore(wrap, t);
+      wrap.appendChild(t);
+    });
+
+    // Intercept relative .md links — resolve and open in our view.
     const currentDir = path.replace(/\/[^/]*$/, '');
-    detail.querySelectorAll('.markdown a[href]').forEach(a => {
+    markdownEl.querySelectorAll('a[href]').forEach(a => {
       const href = a.getAttribute('href');
       if (!href || href.startsWith('#') || /^[a-z]+:/.test(href)) return;
       let abs;
@@ -410,7 +551,118 @@
       }
     });
 
-    // Re-run an open find against the freshly-rendered content.
+    // Universal code-block copy+expand. Order matters: wrap first, then
+    // measure for .no-expand, then wire (so the click handler can read
+    // .no-expand and bail on non-expandable blocks).
+    wrapPreBlocks(markdownEl);
+    applyNoExpandRule(markdownEl);
+    wireCodeBlocks(markdownEl);
+  }
+
+  // Build the markdown payload for the Copy button: the displayed header
+  // (name, path, description, triggers, tools, used-by, date) rendered as
+  // plain markdown, followed by a separator, followed by the raw .md body.
+  // The header parts come from `meta` (the data blob) — they're shown above
+  // the body in the UI but aren't in the .md file itself, so re-encoding
+  // them keeps the clipboard payload self-contained.
+  function buildCopyText() {
+    const m = currentDoc.meta || {};
+    const parts = [];
+    if (currentDoc.name) {
+      parts.push('# ' + currentDoc.name.trim().replace(/\/$/, ''));
+    }
+    if (currentDoc.crumbDisplay) {
+      parts.push('`' + currentDoc.crumbDisplay + '`');
+    }
+    if (m.desc) parts.push(String(m.desc).trim());
+    const kv = [];
+    if (m.triggers && m.triggers.length) kv.push('**Trigger words:** ' + m.triggers.join(', '));
+    if (m.tools && m.tools.length) kv.push('**Tools:** ' + m.tools.join(', '));
+    if (m.used_by && m.used_by.length) kv.push('**Used by:** ' + m.used_by.join(', '));
+    if (m.date) kv.push('**Last modified:** ' + m.date);
+    if (kv.length) parts.push(kv.join('\n'));
+    parts.push('---');
+    parts.push(currentDoc.content || '');
+    return parts.join('\n\n');
+  }
+
+  // Copy the current doc's markdown to the clipboard (with the displayed
+  // header preamble) and flash the Copy button's icon (default → check)
+  // for visual feedback. Shared by the toolbar button click and ⌘A.
+  async function copyDocToClipboard() {
+    const btn = detail && detail.querySelector('.copy-md-btn');
+    if (!currentDoc.content) return;
+    try {
+      await navigator.clipboard.writeText(buildCopyText());
+      if (btn) {
+        btn.classList.add('flash');
+        const origTitle = btn.getAttribute('title');
+        btn.setAttribute('title', 'Copied ✓');
+        setTimeout(() => {
+          btn.classList.remove('flash');
+          if (origTitle) btn.setAttribute('title', origTitle);
+        }, 1400);
+      }
+    } catch (e) {}
+  }
+
+  // Swap the .markdown container between rendered and source modes,
+  // preserving scroll position by anchoring to the topmost visible source
+  // line in the outgoing view.
+  function setViewMode(mode) {
+    const markdownEl = detail.querySelector('.markdown');
+    if (!markdownEl) return;
+    const current = detail.dataset.viewMode || 'rendered';
+    if (current === mode) return;
+
+    // Capture anchor in the outgoing view.
+    const outAttr = (current === 'rendered') ? 'data-md-line' : 'data-line';
+    const anchor = topmostAnchor(detail, outAttr);
+
+    if (mode === 'source') {
+      markdownEl.innerHTML = '';
+      markdownEl.appendChild(buildSourceView(currentDoc.content));
+    } else {
+      markdownEl.innerHTML = renderMarkdownWithLineTags(currentDoc.content);
+      postProcessRendered(markdownEl, currentDoc.path);
+    }
+    detail.dataset.viewMode = mode;
+
+    // Re-trigger the pane-fade keyframe so the new content fades in.
+    markdownEl.style.animation = 'none';
+    void markdownEl.offsetHeight;
+    markdownEl.style.animation = '';
+
+    const srcBtn = detail.querySelector('.source-btn');
+    if (srcBtn) {
+      srcBtn.classList.toggle('is-active', mode === 'source');
+      srcBtn.setAttribute(
+        'title',
+        mode === 'source' ? 'Show rendered (Shift+S)' : 'Show source (Shift+S)'
+      );
+    }
+
+    // Restore anchor in the incoming view. Source side has a data-line for
+    // every source line (exact match). Rendered side only tags block starts —
+    // find the closest block at or before the captured line.
+    if (anchor && anchor.el) {
+      const N = parseInt(anchor.el.getAttribute(outAttr), 10);
+      if (!isNaN(N)) {
+        let target = null;
+        if (mode === 'source') {
+          target = markdownEl.querySelector('.line[data-line="' + N + '"]');
+        } else {
+          const blocks = markdownEl.querySelectorAll('[data-md-line]');
+          for (const b of blocks) {
+            const ml = parseInt(b.getAttribute('data-md-line'), 10);
+            if (ml <= N) target = b;
+            else break;
+          }
+        }
+        if (target) scrollToAnchor(detail, target, anchor.offset);
+      }
+    }
+
     if (window.__mm_reFind) window.__mm_reFind();
   }
 
@@ -643,6 +895,35 @@
               || (focused.tagName === 'SUMMARY' && focused.classList.contains('row')))) {
         e.preventDefault();
         activateTreeFocus();
+        return;
+      }
+    }
+
+    // Shift+S (capital S, no modifier other than Shift) toggles the Source
+    // view on the detail pane. Bare-key idiom matching Enter/Space for the
+    // tree. Suppressed when typing in an input.
+    if (e.key === 'S' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
+        && !isPassThroughKey(e)) {
+      if (currentDoc.content && detail.querySelector('.markdown')) {
+        e.preventDefault();
+        const next = (detail.dataset.viewMode === 'source') ? 'rendered' : 'source';
+        setViewMode(next);
+        return;
+      }
+    }
+
+    // ⌘A / Ctrl+A outside any input → copy the entire doc's markdown source.
+    // Native select-all isn't useful here (it'd grab the tree + sidebar);
+    // "select all of this doc" effectively means "give me the whole thing."
+    // (isPassThroughKey lets cmd+A through as a standard text-edit shortcut,
+    // so we do our own input-focus check here.)
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A')
+        && !e.shiftKey && !e.altKey) {
+      const t = e.target && e.target.tagName;
+      const inField = t === 'INPUT' || t === 'TEXTAREA' || (e.target && e.target.isContentEditable);
+      if (!inField && currentDoc.content) {
+        e.preventDefault();
+        copyDocToClipboard();
         return;
       }
     }
@@ -963,6 +1244,88 @@
     });
   });
 
+  // ---------- Allow files in /tmp ----------
+  const allowTmpBtn = document.getElementById('allow-tmp-btn');
+  function refreshAllowTmpLabel() {
+    if (!allowTmpBtn) return;
+    // Update only the text span — the leading .menu-icon SVG must stay put.
+    const textSpan = allowTmpBtn.querySelector(':scope > span:not(.menu-icon)');
+    if (textSpan) {
+      textSpan.textContent = window.MEMORY_MAP_ALLOW_TMP
+        ? 'Files in /tmp allowed'
+        : 'Allow files in /tmp…';
+    }
+  }
+  refreshAllowTmpLabel();
+  function allowTmpModalHTML() {
+    const enabled = !!window.MEMORY_MAP_ALLOW_TMP;
+    return (
+      '<h2>Allow files in /tmp</h2>' +
+      '<p>By default, Memory Map only opens markdown files inside your home directory. Enabling this lets it also open files in <code>/tmp</code> — useful for scratch files Claude and other CLIs write there.</p>' +
+      '<p class="muted"><strong>Risk:</strong> any process that can reach this local server could ask it to read any markdown file under <code>/tmp</code>. Low risk on a personal laptop; higher on shared machines.</p>' +
+      '<label class="setting-row">' +
+        '<span>Allow files in /tmp</span>' +
+        '<span class="toggle-switch' + (enabled ? ' on' : '') + '" role="switch" aria-checked="' + (enabled ? 'true' : 'false') + '" tabindex="0">' +
+          '<span class="toggle-thumb"></span>' +
+        '</span>' +
+      '</label>' +
+      '<div class="modal-actions">' +
+        '<button class="modal-cta secondary" id="allow-tmp-cancel">Cancel</button>' +
+        '<button class="modal-cta" id="allow-tmp-save" disabled>Save</button>' +
+      '</div>'
+    );
+  }
+  if (allowTmpBtn) allowTmpBtn.addEventListener('click', () => {
+    settingsMenu.classList.remove('open');
+    openModal(allowTmpModalHTML());
+    const sw = document.querySelector('.toggle-switch');
+    const saveBtn = document.getElementById('allow-tmp-save');
+    const cancelBtn = document.getElementById('allow-tmp-cancel');
+    if (!sw || !saveBtn || !cancelBtn) return;
+    const initial = !!window.MEMORY_MAP_ALLOW_TMP;
+    let pending = initial;
+    function syncSwitch() {
+      sw.classList.toggle('on', pending);
+      sw.setAttribute('aria-checked', pending ? 'true' : 'false');
+      saveBtn.disabled = (pending === initial);
+    }
+    function flip() {
+      pending = !pending;
+      syncSwitch();
+    }
+    sw.addEventListener('click', flip);
+    sw.addEventListener('keydown', e => {
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); }
+    });
+    cancelBtn.addEventListener('click', () => closeModal());
+    saveBtn.addEventListener('click', async () => {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      try {
+        const res = await fetch('/api/set-allow-tmp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: pending }),
+        });
+        const body = await res.json();
+        if (body.ok) {
+          window.MEMORY_MAP_ALLOW_TMP = !!body.allow_tmp;
+          refreshAllowTmpLabel();
+          closeModal();
+          toast(pending ? 'Files in /tmp now allowed.' : 'Files in /tmp blocked again.');
+        } else {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save';
+          toast('Save failed: ' + (body.stderr || 'unknown').slice(0, 400), true);
+        }
+      } catch (err) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+        toast('Save request failed: ' + err.message, true);
+      }
+    });
+  });
+
   const resetBtn = document.getElementById('reset-config-btn');
   if (resetBtn) resetBtn.addEventListener('click', () => runMenuAction('/api/reset-config', 'Reset'));
 
@@ -970,11 +1333,6 @@
   const modalBackdrop = document.getElementById('modal-backdrop');
   const modalBody = document.getElementById('modal-body');
   const modalClose = document.getElementById('modal-close');
-
-  const codeExpandIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6 L8 10 L12 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const codeCollapseIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10 L8 6 L12 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const codeCopyIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3 11V4a1 1 0 011-1h7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
-  const codeCheckIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 L6.5 11.5 L12.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   function wireCodeBlocks(root) {
     root.querySelectorAll('.code-block').forEach(block => {
@@ -991,6 +1349,7 @@
       }
       block.addEventListener('click', e => {
         if (e.target.closest('.code-action')) return;
+        if (block.classList.contains('no-expand')) return;
         if (block.classList.contains('expanded')) return;
         setExpanded(true);
       });
@@ -1028,6 +1387,120 @@
         '<div class="code-fade"></div>' +
       '</div>'
     );
+  }
+
+  // ---------- Markdown render helpers (line tagging + source view) ----------
+  // The detail pane and (separately) viewer.html share these in spirit; the
+  // viewer inlines its own copies.
+
+  // Render markdown to HTML where each top-level block is wrapped in a
+  // <div data-md-line="N"> anchor. N is the 1-based source line where the
+  // block starts. Used by the Source toggle to anchor scroll position when
+  // swapping between rendered and source views.
+  function renderMarkdownWithLineTags(content) {
+    if (!(window.marked && window.marked.lexer && window.marked.parser)) {
+      // Fallback to the plain rendering path; the source toggle still works,
+      // it just can't anchor by line.
+      return window.marked
+        ? window.marked.parse(content)
+        : '<pre>' + esc(content) + '</pre>';
+    }
+    const tokens = window.marked.lexer(content);
+    const parts = [];
+    let line = 1;
+    for (const tok of tokens) {
+      const nlines = (tok.raw && tok.raw.match(/\n/g) || []).length;
+      if (tok.type === 'space') {
+        line += nlines;
+        continue;
+      }
+      const html = window.marked.parser([tok]);
+      parts.push('<div data-md-line="' + line + '">' + html + '</div>');
+      line += nlines;
+    }
+    return parts.join('');
+  }
+
+  // Build a .md-source DOM node: two-column grid with line numbers in a
+  // user-select:none gutter and one .line div per source line. Each line div
+  // carries data-line="N" so the source side can participate in line-anchored
+  // scroll preservation.
+  function buildSourceView(content) {
+    const div = document.createElement('div');
+    div.className = 'md-source';
+    const lines = content.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const ln = document.createElement('div');
+      ln.className = 'ln';
+      ln.textContent = String(i + 1);
+      const line = document.createElement('div');
+      line.className = 'line';
+      line.dataset.line = String(i + 1);
+      line.textContent = lines[i];
+      div.appendChild(ln);
+      div.appendChild(line);
+    }
+    return div;
+  }
+
+  // Walk all <pre> in `root` (the post-marked rendered tree) and replace each
+  // one with the .code-block copy+expand structure. Skips any <pre> already
+  // inside a .code-block (defensive — none should exist, but safe).
+  function wrapPreBlocks(root) {
+    root.querySelectorAll('pre').forEach(pre => {
+      if (pre.closest('.code-block')) return;
+      const code = pre.querySelector('code');
+      const text = code ? code.textContent : pre.textContent;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = codeBlockHTML(text);
+      const block = wrapper.firstElementChild;
+      pre.parentNode.replaceChild(block, pre);
+    });
+  }
+
+  // Measure each .code-block and add .no-expand when expanding would reveal
+  // ≤ 10 more lines than the collapsed cap. Run after the block is in the
+  // DOM (needs layout) and before wireCodeBlocks (so click-to-expand stays
+  // off for no-expand blocks).
+  function applyNoExpandRule(root) {
+    root.querySelectorAll('.code-block').forEach(block => {
+      const pre = block.querySelector('.code-content');
+      if (!pre) return;
+      const cs = getComputedStyle(pre);
+      const lh = parseFloat(cs.lineHeight) || 19;
+      const capPx = parseFloat(cs.maxHeight) || 112;
+      const hiddenPx = pre.scrollHeight - capPx;
+      const hiddenLines = hiddenPx / lh;
+      if (hiddenLines <= 10) block.classList.add('no-expand');
+    });
+  }
+
+  // Find the topmost element (within `container`) carrying `attr`, scoped
+  // such that the element's top is at or below `container`'s scroll-viewport
+  // top. Returns {el, offset} where offset is the element's distance below
+  // the viewport top — used to re-pin the matching element on the other side.
+  function topmostAnchor(container, attr) {
+    const containerTop = container.getBoundingClientRect().top;
+    const candidates = container.querySelectorAll('[' + attr + ']');
+    let best = null;
+    for (const el of candidates) {
+      const top = el.getBoundingClientRect().top - containerTop;
+      if (top >= -2) {                 // tiny slack for sub-pixel scroll
+        best = { el, offset: top };
+        break;
+      }
+      best = { el, offset: top };      // keep the last "above" as a fallback
+    }
+    return best;
+  }
+
+  // Scroll `container` so that `el`'s top sits `offset` px below the
+  // container's viewport top. Clamped to valid scroll range.
+  function scrollToAnchor(container, el, offset) {
+    const containerTop = container.getBoundingClientRect().top;
+    const elTop = el.getBoundingClientRect().top;
+    const delta = (elTop - containerTop) - offset;
+    container.scrollTop = container.scrollTop + delta;
   }
 
   function openModal(html) {

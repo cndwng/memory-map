@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "memorymap",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-c",
+        "import sys; sys.path.insert(0, '/Users/cindy.q.wang/workspace/memory-map/Memory Map.app/Contents/Resources'); import server; httpd = server.ReuseTCPServer(('127.0.0.1', 47834), server.Handler); print(47834, flush=True); httpd.serve_forever()"
+      ],
+      "port": 47834
+    }
+  ]
+}
