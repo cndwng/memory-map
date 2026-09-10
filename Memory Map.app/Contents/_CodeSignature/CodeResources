@@ -6,27 +6,31 @@
 	<dict>
 		<key>Resources/MemoryMap.swift</key>
 		<data>
-		7zNH5x1yH76sQJIdbqyRTqb3j3M=
+		CfN0MH5yIVGbB+wlCvljAM9Wkzc=
+		</data>
+		<key>Resources/__pycache__/server.cpython-314.pyc</key>
+		<data>
+		MlZaCN2gUme4+qOgZYGajSuyNso=
 		</data>
 		<key>Resources/app.js</key>
 		<data>
-		1HcHf2EuwfxRtnVxgNp7Y+4H3sg=
+		IUPjpUH3A35RcJrU2Z9EfN6SSN4=
+		</data>
+		<key>Resources/build-once.sh</key>
+		<data>
+		q2bJPbmF+idf+pNWUq5EsWtxMFI=
 		</data>
 		<key>Resources/build.py</key>
 		<data>
-		w2xVoI4Ez18l9pZ6NHBxkXxZPRs=
+		4x4XbgxnFJDTD0ntg+jJq3DYoJY=
 		</data>
 		<key>Resources/favicon.png</key>
 		<data>
-		YaSoZL7yG/aJoqDVDkqwP0UfaCQ=
-		</data>
-		<key>Resources/icon-source.png</key>
-		<data>
-		YaSoZL7yG/aJoqDVDkqwP0UfaCQ=
+		FnNziCq0nC9DMGIs1cUzBKsFFck=
 		</data>
 		<key>Resources/icon.icns</key>
 		<data>
-		10CbE/7VPq/zFeomn55FA1cG+jc=
+		78qsXPj6uDslbNdjDc+zkvOTUA0=
 		</data>
 		<key>Resources/marked.min.js</key>
 		<data>
@@ -34,23 +38,27 @@
 		</data>
 		<key>Resources/refresh-on-plan.sh</key>
 		<data>
-		/bEVYglBIeydCeiYlhEbc/bMblo=
+		VhhyUithYzZAhS5FPc/qktNqt54=
 		</data>
 		<key>Resources/server.py</key>
 		<data>
-		8qseD4hHv3LTQ0UNsyqYS3JRv80=
+		1wYNFZNYR/iyexrPqF2i9QQJAxw=
 		</data>
 		<key>Resources/styles.css</key>
 		<data>
-		BO2x1nrAvLmGf9H5daOySoAlv6w=
+		1fhw8sbLwMiqHJoBE00wCQRaNUs=
 		</data>
 		<key>Resources/template.html</key>
 		<data>
-		rsCmJBt/YKeg5lh10U6dCX2fCtw=
+		WbMgPnf472hwhXPwzYlywAToX1g=
 		</data>
 		<key>Resources/viewer.html</key>
 		<data>
-		nPtfhbsMQeLqG4qLb+RoqhgRt5Y=
+		uLfI97g93KS6DIMgLZNhL+CT02o=
+		</data>
+		<key>Resources/welcome.html</key>
+		<data>
+		JoMHnIuvNvxJduqVU+AFVMeRHdo=
 		</data>
 	</dict>
 	<key>files2</key>
@@ -59,42 +67,49 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			rPAF/B6QmcniTJgLzzJLxrXGJx6pN3Y4B+d4HDioFFc=
+			UYq7ymR3YwbFuY66eTXCdzL1tLG+BSNCKbeRlJiu8A0=
+			</data>
+		</dict>
+		<key>Resources/__pycache__/server.cpython-314.pyc</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			VMWyi0KKCZcaPZijnuxAx/jdi584MdDHzcn+zJRsTXE=
 			</data>
 		</dict>
 		<key>Resources/app.js</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			5Z7CT0Y3GMajsI/aWhyQtaU23Ce5beza6/9+GBYlGhU=
+			Z3sZJFg5eQaNsrD5/dA6v+nqZTlPbStV7Cs45+WLby8=
+			</data>
+		</dict>
+		<key>Resources/build-once.sh</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			B1FeUyuL6cA5lnq8K1/9kAk8vzQOKhB35HKhrz9F33M=
 			</data>
 		</dict>
 		<key>Resources/build.py</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			4WV0vwNTNK5Vv6UVmY0QRCnu7BMAsX+eKDeb8IXRVlo=
+			xFoPptG3vdLniJOhS1pY6cAqzD3mc/BEVf+OBk0nUqs=
 			</data>
 		</dict>
 		<key>Resources/favicon.png</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			vN5SAooM73jgCWpNdPCg1EweqKfPjJn17wx/wgXaIno=
-			</data>
-		</dict>
-		<key>Resources/icon-source.png</key>
-		<dict>
-			<key>hash2</key>
-			<data>
-			vN5SAooM73jgCWpNdPCg1EweqKfPjJn17wx/wgXaIno=
+			dDu6rZT2MxF8XIKyh88ahpfFs7r57W74BrYC0Y4joIU=
 			</data>
 		</dict>
 		<key>Resources/icon.icns</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			tk5hswtPHpHGwZeBEMKT8V1oTjbzZ30d9V7GfjX0BkQ=
+			aUbf0Q6x2KiFJ5iVAme1HxJlYDOLj0rOPXXcYtd6s/U=
 			</data>
 		</dict>
 		<key>Resources/marked.min.js</key>
@@ -108,35 +123,42 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			zxMFGqKnuHvNWzncn+yeKXScHIlV7sI3P54THqUYns8=
+			2OYnUZLJzitCALjDKocuRc4xEfGJIwOy3v1hOGiysuI=
 			</data>
 		</dict>
 		<key>Resources/server.py</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			MirdL3l4Q/4yjfMQELPSLX+4sbIvI5kdZ382UQtD/ow=
+			/o5etvFSOPktFgWdmJ9+AAkohsLrM2vvtFoqZEwwtX4=
 			</data>
 		</dict>
 		<key>Resources/styles.css</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			v9F+75LOONgeORR/+o7Q4IW+S84i2e7rQBHQPCSNLgg=
+			+GHOay6m+chSntlGCm5tTY8QpP7H7k2yQynCbuYeomo=
 			</data>
 		</dict>
 		<key>Resources/template.html</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			S8mP7Ef/3yGSBP7bdr7PmRRuw7KT+zyHiiL9QpjGeV4=
+			EG1rnhJVYMOXVEctnE9i0XgXOfdnLeqpOWU3PQEcLuo=
 			</data>
 		</dict>
 		<key>Resources/viewer.html</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			ZZJ+8uaIPSBJqHk2A972PTs+XjHo+kZqNAVSRFpu09E=
+			Zlad5ZaKM9BW7nKZ42PPe4gtj7hdHO4nRccOJbf4Z4A=
+			</data>
+		</dict>
+		<key>Resources/welcome.html</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			dcqBJeNs7yFu2nZzgkaRdrZee+Xu3km82lOTAMyR4K4=
 			</data>
 		</dict>
 	</dict>
