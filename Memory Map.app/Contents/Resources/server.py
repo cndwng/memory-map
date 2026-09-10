@@ -83,14 +83,17 @@ def hooks_snippet_for_bundle():
     """The settings-snippet we recommend users paste into ~/.claude/settings.json.
     Paths point at THIS .app's Resources scripts, so the snippet works no
     matter where the user installs the .app."""
-    build_path = os.path.join(RES_DIR, 'build.py')
+    build_once_path = os.path.join(RES_DIR, 'build-once.sh')
     refresh_path = os.path.join(RES_DIR, 'refresh-on-plan.sh')
+    # Both hooks go through build-once.sh rather than calling build.py directly.
+    # It backgrounds the rebuild, takes a lock so concurrent sessions cannot
+    # stack up walks, and kills a build that overruns its cap.
     return json.dumps({
         'hooks': {
             'SessionStart': [{
                 'matcher': '',
                 'hooks': [{'type': 'command',
-                           'command': f'python3 {build_path} >/dev/null 2>&1 &'}],
+                           'command': f'bash {build_once_path}'}],
             }],
             'PostToolUse': [{
                 'matcher': 'Write|Edit|ExitPlanMode',

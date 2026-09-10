@@ -7,19 +7,11 @@ set -e
 INPUT=$(cat)
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
-BUILD="$SELF_DIR/build.py"
-LOCKDIR="${TMPDIR:-/tmp}/memorymap-build.lock"
+BUILD_ONCE="$SELF_DIR/build-once.sh"
 
-# Runs across every concurrent Claude Code session/agent, so guard against
-# piling up redundant rebuilds: skip if one is already in flight rather than
-# queuing — the in-flight build already captures the latest state.
+# build-once.sh owns the locking and the runtime cap for every spawner.
 run_build() {
-  (
-    if mkdir "$LOCKDIR" 2>/dev/null; then
-      trap 'rmdir "$LOCKDIR"' EXIT
-      python3 "$BUILD" >/dev/null 2>&1
-    fi
-  ) &
+  bash "$BUILD_ONCE"
 }
 
 # ExitPlanMode always means a plan event; rebuild unconditionally.

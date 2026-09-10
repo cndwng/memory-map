@@ -15,8 +15,11 @@ __pycache__/
 # The on-disk data/ folder in this repo is legacy and intentionally untracked.
 data/
 
-# Session scratchpads (transcript probes, etc.)
-.tmp_*.txt
+# Session scratchpads (transcript probes, etc.). These capture raw prompt and
+# queue contents, so the glob stays extension-agnostic — a .jsonl probe is just
+# as sensitive as a .txt one, and this repo pushes to a personal remote.
+.tmp_*
+.userq.txt
 
 # Local build artifacts (./build.sh output). CI uploads these to releases.
 dist/

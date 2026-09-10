@@ -92,6 +92,7 @@ Memory Map.app/
         ├── MemoryMap.swift     # launcher source
         ├── build.py            # ~/.claude/ → JSON
         ├── server.py           # localhost HTTP server
+        ├── build-once.sh       # locked, time-capped rebuild for hooks
         ├── refresh-on-plan.sh  # hook helper
         ├── template.html
         ├── viewer.html         # standalone .md file viewer

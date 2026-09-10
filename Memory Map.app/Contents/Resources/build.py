@@ -147,6 +147,35 @@ def parse_skill_like(path, name_from_filename=False):
     }
 
 
+# Dirs that must never be walked. They hold nested checkouts, dependency trees,
+# or symlink farms (pnpm store links, for one) that `glob`'s `**` will follow
+# forever, since `**` matches through directory symlinks. A web worktree parked
+# under `web/.claude/worktrees/` was enough to make a rebuild spin for days at a
+# 1.7 GB footprint.
+PRUNE_DIRS = {
+    'node_modules', 'worktrees', '.worktrees', '.git', 'vendor', 'Pods',
+    'build', 'dist', '.build', '.venv', 'venv', '__pycache__', '.next',
+    'DerivedData', '.gradle', '.idea', 'Carthage',
+}
+
+
+def walk_docs(root, exts=('.md',)):
+    """Recursive file search standing in for glob.glob('**', recursive=True).
+
+    Two differences that matter: os.walk does not follow directory symlinks,
+    and pruning `dirnames` in place keeps the walk out of dependency trees.
+    """
+    out = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = [
+            d for d in dirnames if d not in PRUNE_DIRS and not d.startswith('.')
+        ]
+        out.extend(
+            os.path.join(dirpath, f) for f in filenames if f.endswith(exts)
+        )
+    return sorted(out)
+
+
 def read_text(path):
     try:
         return open(path).read()
@@ -159,7 +188,7 @@ def find_skill_nested(skill_dir):
     belongs to the skill. Walking the tree (not just one level) catches
     `references/*.md` and any other subdir conventions plugins use."""
     out = []
-    for f in sorted(glob.glob(f'{skill_dir}/**/*.md', recursive=True)):
+    for f in walk_docs(skill_dir):
         if os.path.basename(f) == 'SKILL.md':
             continue
         rel = os.path.relpath(f, skill_dir)
@@ -298,12 +327,11 @@ def collect_claude_dir(claude_dir, include_extras=False):
         known = {'skills', 'agents', 'commands'}
         for entry in sorted(os.listdir(claude_dir)):
             sub = f'{claude_dir}/{entry}'
-            if not os.path.isdir(sub) or entry in known or entry.startswith('.'):
+            if not os.path.isdir(sub) or entry.startswith('.'):
                 continue
-            paths = sorted(
-                glob.glob(f'{sub}/**/*.md', recursive=True)
-                + glob.glob(f'{sub}/**/*.mdc', recursive=True)
-            )
+            if entry in known or entry in PRUNE_DIRS:
+                continue
+            paths = walk_docs(sub, exts=('.md', '.mdc'))
             found = [parse_loose_md(p) for p in paths]
             if found:
                 items['extras'][entry] = found
